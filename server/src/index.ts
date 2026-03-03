@@ -1,0 +1,53 @@
+import express from "express";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import helmet from "helmet";
+import { env } from "./config/env";
+import "./config/passport"; // Initialize passport strategies
+
+import authRoutes from "./routes/auth";
+import githubRoutes from "./routes/github";
+import userRoutes from "./routes/user";
+
+const app = express();
+
+// ── Security ───────────────────────────────────────────
+app.use(helmet());
+app.use(
+  cors({
+    origin: env.CLIENT_URL,
+    credentials: true,
+  })
+);
+
+// ── Parsing ────────────────────────────────────────────
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+// ── Routes ─────────────────────────────────────────────
+app.use("/api/auth", authRoutes);
+app.use("/api/github", githubRoutes);
+app.use("/api/user", userRoutes);
+
+// ── Health check ───────────────────────────────────────
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// ── Start ──────────────────────────────────────────────
+import http from "http";
+
+const server = http.createServer(app);
+
+server.listen(env.PORT, () => {
+  console.log(`🚀 Nebula server running on http://localhost:${env.PORT}`);
+  console.log(`   Environment: ${env.NODE_ENV}`);
+  console.log(`   Client URL: ${env.CLIENT_URL}`);
+});
+
+process.on("SIGTERM", () => {
+  server.close();
+});
+
+export default app;
