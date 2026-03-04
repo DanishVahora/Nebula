@@ -54,6 +54,8 @@ model Workspace {
   name        String
   description String?
   language    String?
+  template    String?  // blank | dsa | static-web | react | nextjs | nodejs | fullstack
+  visibility  String   @default("private") // private | public
   repoUrl     String?
   repoName    String?
   isImported  Boolean  @default(false)

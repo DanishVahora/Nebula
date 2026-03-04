@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Topbar } from "@/components/dashboard/Topbar";
 import { WelcomeSection } from "@/components/dashboard/WelcomeSection";
@@ -12,17 +13,71 @@ import { AssignmentsPanel } from "@/components/dashboard/AssignmentsPanel";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import { motion, AnimatePresence } from "framer-motion";
 
-type Section = "dashboard" | "workspaces" | "assignments" | "classroom" | "settings";
+type Section = "dashboard" | "workspaces" | "assignments" | "github" | "settings";
+
+/** Animated gradient streaks — subtle green/yellow/red flowing light waves */
+function GradientBackground() {
+  const { isDark } = useTheme();
+  return (
+    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+      {/* Primary green streak */}
+      <motion.div
+        animate={{ x: ["-10%", "60%", "-10%"], y: ["-20%", "40%", "-20%"] }}
+        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute h-[500px] w-[500px] rounded-full"
+        style={{
+          background: isDark
+            ? "radial-gradient(circle, rgba(34,197,94,0.08) 0%, transparent 70%)"
+            : "radial-gradient(circle, rgba(34,197,94,0.06) 0%, transparent 70%)",
+          filter: "blur(80px)",
+          top: "-10%",
+          left: "10%",
+        }}
+      />
+      {/* Yellow streak */}
+      <motion.div
+        animate={{ x: ["30%", "-20%", "30%"], y: ["60%", "10%", "60%"] }}
+        transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute h-[450px] w-[450px] rounded-full"
+        style={{
+          background: isDark
+            ? "radial-gradient(circle, rgba(234,179,8,0.06) 0%, transparent 70%)"
+            : "radial-gradient(circle, rgba(234,179,8,0.05) 0%, transparent 70%)",
+          filter: "blur(80px)",
+          top: "30%",
+          right: "5%",
+        }}
+      />
+      {/* Red streak */}
+      <motion.div
+        animate={{ x: ["50%", "-10%", "50%"], y: ["20%", "-30%", "20%"] }}
+        transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute h-[400px] w-[400px] rounded-full"
+        style={{
+          background: isDark
+            ? "radial-gradient(circle, rgba(239,68,68,0.05) 0%, transparent 70%)"
+            : "radial-gradient(circle, rgba(239,68,68,0.04) 0%, transparent 70%)",
+          filter: "blur(80px)",
+          bottom: "10%",
+          left: "30%",
+        }}
+      />
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { hasGitHubConnected } = useAuth();
+  const { isDark } = useTheme();
   const [activeSection, setActiveSection] = useState<Section>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const sidebarWidth = sidebarCollapsed ? 64 : 220;
+  const sidebarWidth = sidebarCollapsed ? 72 : 240;
 
   return (
-    <div className="flex min-h-screen bg-black text-white">
+    <div className={`relative flex min-h-screen ${isDark ? "bg-black text-zinc-100" : "bg-[#fafafc] text-zinc-900"}`}>
+      <GradientBackground />
+
       <Sidebar
         activeSection={activeSection}
         onNavigate={(s) => setActiveSection(s as Section)}
@@ -30,49 +85,40 @@ export default function Dashboard() {
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
 
-      {/* Main content area */}
-      <div className="flex-1 transition-all duration-200" style={{ marginLeft: sidebarWidth }}>
+      <div className="relative z-10 flex-1 transition-all duration-300 ease-out" style={{ marginLeft: sidebarWidth }}>
         <Topbar />
 
-        <main className="px-6 py-6">
+        <main className="mx-auto max-w-[1200px] px-8 py-6">
           <AnimatePresence mode="wait">
             {activeSection === "dashboard" && (
               <motion.div
                 key="dashboard"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
                 className="space-y-6"
               >
-                {/* Welcome */}
                 <WelcomeSection />
 
-                {/* Cards Grid */}
-                <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-5 lg:grid-cols-2">
                   <WorkspacesCard />
                   <AssignmentsCard />
-
-                  {/* GitHub section — conditional */}
-                  {!hasGitHubConnected && <GitHubConnectCard />}
                 </div>
-
-                {/* GitHub Overview — only when connected */}
-                {hasGitHubConnected && <GitHubOverview />}
               </motion.div>
             )}
 
             {activeSection === "workspaces" && (
               <motion.div
                 key="workspaces"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
               >
                 <div className="mb-6">
-                  <h1 className="text-lg font-bold tracking-tight text-white">Workspaces</h1>
-                  <p className="mt-1 text-sm text-zinc-500">Manage and create your coding workspaces.</p>
+                  <h1 className="text-xl font-semibold tracking-tight">Workspaces</h1>
+                  <p className={`mt-1 text-sm ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>Manage and create your coding workspaces.</p>
                 </div>
                 <WorkspacesPanel />
               </motion.div>
@@ -81,49 +127,48 @@ export default function Dashboard() {
             {activeSection === "assignments" && (
               <motion.div
                 key="assignments"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
               >
                 <div className="mb-6">
-                  <h1 className="text-lg font-bold tracking-tight text-white">Assignments</h1>
-                  <p className="mt-1 text-sm text-zinc-500">View and submit your class assignments.</p>
+                  <h1 className="text-xl font-semibold tracking-tight">Assignments</h1>
+                  <p className={`mt-1 text-sm ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>View and submit your class assignments.</p>
                 </div>
                 <AssignmentsPanel />
               </motion.div>
             )}
 
-            {activeSection === "classroom" && (
+            {activeSection === "github" && (
               <motion.div
-                key="classroom"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex flex-col items-center justify-center py-24 text-center"
+                key="github"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
               >
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.02]">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6 text-zinc-600">
-                    <path d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5" />
-                  </svg>
+                <div className="mb-6">
+                  <h1 className="text-xl font-semibold tracking-tight">GitHub</h1>
+                  <p className={`mt-1 text-sm ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>
+                    {hasGitHubConnected ? "Your GitHub activity and repositories." : "Connect your GitHub account to get started."}
+                  </p>
                 </div>
-                <h2 className="mt-4 text-base font-semibold text-white">Classroom</h2>
-                <p className="mt-1.5 text-sm text-zinc-500">Coming soon. Join and manage your classes.</p>
+                {hasGitHubConnected ? <GitHubOverview /> : <GitHubConnectCard />}
               </motion.div>
             )}
 
             {activeSection === "settings" && (
               <motion.div
                 key="settings"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
               >
                 <div className="mb-6">
-                  <h1 className="text-lg font-bold tracking-tight text-white">Settings</h1>
-                  <p className="mt-1 text-sm text-zinc-500">Account settings and connected services.</p>
+                  <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+                  <p className={`mt-1 text-sm ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>Account settings and connected services.</p>
                 </div>
                 <ConnectedAccounts />
               </motion.div>

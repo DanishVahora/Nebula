@@ -246,6 +246,103 @@ router.get("/stats", authenticate, async (req: Request, res: Response) => {
   }
 });
 
+// ── Create GitHub repo and link to workspace ──────────
+router.post(
+  "/create-repo",
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const { name, description, isPrivate, workspaceId } = req.body;
+
+      if (!name) {
+        res.status(400).json({ error: "Repository name is required" });
+        return;
+      }
+
+      const token = await getGitHubToken(req.user!.userId);
+      if (!token) {
+        res.status(400).json({ error: "GitHub account not connected" });
+        return;
+      }
+
+      // Create repo on GitHub
+      const ghResponse = await fetch("https://api.github.com/user/repos", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github.v3+json",
+          "Content-Type": "application/json",
+          "User-Agent": "Nebula-IDE",
+        },
+        body: JSON.stringify({
+          name,
+          description: description || `Created with Nebula`,
+          private: isPrivate !== false,
+          auto_init: true,
+        }),
+      });
+
+      if (!ghResponse.ok) {
+        const errorBody = await ghResponse.text();
+        console.error("GitHub create repo error:", errorBody);
+
+        // Parse specific GitHub API errors
+        let errorMessage = "Failed to create GitHub repository";
+        try {
+          const parsed = JSON.parse(errorBody);
+          if (ghResponse.status === 422) {
+            // Check for "name already exists" error
+            const nameError = parsed.errors?.find(
+              (e: any) => e.resource === "Repository" && e.field === "name"
+            );
+            if (nameError) {
+              errorMessage = `A repository named "${name}" already exists on your GitHub account. Please choose a different name.`;
+            } else {
+              errorMessage = parsed.message || errorMessage;
+            }
+          } else if (parsed.message) {
+            errorMessage = parsed.message;
+          }
+        } catch {
+          // Use default error message
+        }
+
+        res.status(ghResponse.status).json({ error: errorMessage });
+        return;
+      }
+
+      const ghRepo = (await ghResponse.json()) as {
+        html_url: string;
+        full_name: string;
+      };
+
+      // Link to workspace if workspaceId provided
+      if (workspaceId) {
+        await prisma.workspace.updateMany({
+          where: {
+            id: workspaceId,
+            userId: req.user!.userId,
+          },
+          data: {
+            repoUrl: ghRepo.html_url,
+            repoName: ghRepo.full_name,
+          },
+        });
+      }
+
+      res.status(201).json({
+        repo: {
+          htmlUrl: ghRepo.html_url,
+          fullName: ghRepo.full_name,
+        },
+      });
+    } catch (error) {
+      console.error("Create repo error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // ── Import repo as workspace ───────────────────────────
 router.post(
   "/import-repo",

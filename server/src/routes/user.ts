@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { authenticate } from "../middleware/auth";
 import prisma from "../lib/prisma";
+import { initWorkspaceFiles, deleteWorkspaceFiles } from "../lib/workspace";
 
 const router = Router();
 
@@ -29,10 +30,24 @@ router.post(
   authenticate,
   async (req: Request, res: Response) => {
     try {
-      const { name, description, language } = req.body;
+      const { name, description, language, template, visibility } = req.body;
 
       if (!name) {
         res.status(400).json({ error: "Workspace name is required" });
+        return;
+      }
+
+      // Check for duplicate workspace name for this user
+      const existing = await prisma.workspace.findFirst({
+        where: {
+          userId: req.user!.userId,
+          name: name.trim(),
+        },
+      });
+      if (existing) {
+        res.status(409).json({
+          error: `A workspace named "${name.trim()}" already exists. Please choose a different name.`,
+        });
         return;
       }
 
@@ -41,9 +56,14 @@ router.post(
           name,
           description: description || null,
           language: language || null,
+          template: template || null,
+          visibility: visibility || "private",
           userId: req.user!.userId,
         },
       });
+
+      // Initialize workspace files on disk
+      await initWorkspaceFiles(workspace.id, template || "blank");
 
       res.status(201).json({ workspace });
     } catch (error) {
@@ -75,6 +95,9 @@ router.delete(
       await prisma.workspace.delete({
         where: { id },
       });
+
+      // Clean up workspace files from disk
+      await deleteWorkspaceFiles(id);
 
       res.json({ message: "Workspace deleted" });
     } catch (error) {

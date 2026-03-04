@@ -8,8 +8,10 @@ import {
   Download,
   Loader2,
   RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 import { githubAPI } from "@/lib/api";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface Repo {
   id: number;
@@ -38,9 +40,14 @@ const langColors: Record<string, string> = {
   Ruby: "bg-red-500",
   HTML: "bg-orange-500",
   CSS: "bg-purple-400",
+  Shell: "bg-emerald-400",
+  Swift: "bg-orange-300",
+  Kotlin: "bg-violet-400",
+  PHP: "bg-indigo-400",
 };
 
 export function GitHubRepos() {
+  const { isDark } = useTheme();
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState<number | null>(null);
@@ -81,28 +88,37 @@ export function GitHubRepos() {
 
   if (loading) {
     return (
-      <div className="mt-6 flex items-center justify-center py-12">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-700 border-t-white" />
+      <div className="mt-6 flex items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-3">
+          <div className={`h-5 w-5 animate-spin rounded-full border-2 ${
+            isDark ? "border-zinc-800 border-t-white" : "border-zinc-200 border-t-black"
+          }`} />
+          <p className={`text-xs ${isDark ? "text-zinc-600" : "text-zinc-400"}`}>Fetching repositories...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mt-4">
+    <div className="mt-5">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs font-medium text-zinc-500">
           {repos.length} repositories found
         </p>
         <button
           onClick={fetchRepos}
-          className="flex h-7 items-center gap-1.5 rounded-lg border border-white/[0.06] px-2.5 text-[10px] text-zinc-500 transition-colors hover:text-white"
+          className={`flex h-8 items-center gap-1.5 rounded-xl border px-3 text-[10px] font-medium transition-all duration-300 ${
+            isDark
+              ? "border-white/8 bg-white/2 text-zinc-500 hover:border-white/12 hover:text-white"
+              : "border-black/8 bg-black/2 text-zinc-500 hover:border-black/12 hover:text-black"
+          }`}
         >
           <RefreshCw className="h-3 w-3" />
           Refresh
         </button>
       </div>
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-4 space-y-3">
         {repos.map((repo, i) => {
           const isImported = importedIds.has(repo.id);
           const isImporting = importing === repo.id;
@@ -113,38 +129,52 @@ export function GitHubRepos() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.03 }}
-              className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-[#0a0a0a] px-4 py-3 transition-colors hover:border-white/[0.12]"
+              className={`group flex items-center justify-between rounded-2xl border px-5 py-4 backdrop-blur-sm transition-all duration-300 ${
+                isDark
+                  ? "border-white/8 bg-white/3 hover:border-white/12 hover:shadow-[0_0_30px_rgba(255,255,255,0.02)]"
+                  : "border-black/8 bg-white/70 hover:border-black/12 hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
+              }`}
             >
-              <div className="flex items-center gap-3 overflow-hidden">
-                {repo.isPrivate ? (
-                  <Lock className="h-3.5 w-3.5 shrink-0 text-yellow-500/60" />
-                ) : (
-                  <Globe className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
-                )}
+              <div className="flex items-center gap-4 overflow-hidden">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                  isDark ? "border-white/8 bg-white/2" : "border-black/8 bg-black/2"
+                }`}>
+                  {repo.isPrivate ? (
+                    <Lock className={`h-4 w-4 ${isDark ? "text-yellow-500/60" : "text-yellow-600/60"}`} />
+                  ) : (
+                    <Globe className={`h-4 w-4 ${isDark ? "text-zinc-600" : "text-zinc-400"}`} />
+                  )}
+                </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     <a
                       href={repo.htmlUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="truncate text-sm font-medium text-blue-400 hover:underline"
+                      className={`truncate text-sm font-semibold tracking-tight transition-colors hover:text-blue-400 ${
+                        isDark ? "text-white" : "text-zinc-900"
+                      }`}
                     >
                       {repo.name}
                     </a>
                     {repo.isPrivate && (
-                      <span className="shrink-0 rounded border border-yellow-500/20 bg-yellow-500/5 px-1.5 py-0.5 text-[9px] text-yellow-500/70">
+                      <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-medium ${
+                        isDark
+                          ? "border-yellow-500/20 bg-yellow-500/5 text-yellow-500/70"
+                          : "border-yellow-300 bg-yellow-50 text-yellow-600"
+                      }`}>
                         Private
                       </span>
                     )}
                   </div>
                   {repo.description && (
-                    <p className="mt-0.5 truncate text-xs text-zinc-600">
+                    <p className={`mt-0.5 truncate text-xs ${isDark ? "text-zinc-600" : "text-zinc-400"}`}>
                       {repo.description}
                     </p>
                   )}
-                  <div className="mt-1.5 flex items-center gap-3 text-[10px] text-zinc-600">
+                  <div className={`mt-2 flex items-center gap-3 text-[10px] ${isDark ? "text-zinc-600" : "text-zinc-400"}`}>
                     {repo.language && (
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1.5">
                         <span
                           className={`inline-block h-2 w-2 rounded-full ${
                             langColors[repo.language] || "bg-zinc-500"
@@ -154,13 +184,13 @@ export function GitHubRepos() {
                       </span>
                     )}
                     {repo.stars > 0 && (
-                      <span className="flex items-center gap-0.5">
+                      <span className="flex items-center gap-1">
                         <Star className="h-2.5 w-2.5" />
                         {repo.stars}
                       </span>
                     )}
                     {repo.forks > 0 && (
-                      <span className="flex items-center gap-0.5">
+                      <span className="flex items-center gap-1">
                         <GitFork className="h-2.5 w-2.5" />
                         {repo.forks}
                       </span>
@@ -172,16 +202,23 @@ export function GitHubRepos() {
               <button
                 onClick={() => importRepo(repo)}
                 disabled={isImporting || isImported}
-                className={`flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[10px] font-medium transition-colors ${
+                className={`flex h-8 shrink-0 items-center gap-2 rounded-xl px-4 text-[10px] font-semibold transition-all duration-300 disabled:opacity-40 ${
                   isImported
-                    ? "border border-green-500/20 bg-green-500/5 text-green-400"
-                    : "border border-white/[0.08] text-zinc-400 hover:bg-white/[0.04] hover:text-white"
-                } disabled:opacity-50`}
+                    ? isDark
+                      ? "border border-green-500/20 bg-green-500/5 text-green-400"
+                      : "border border-green-200 bg-green-50 text-green-600"
+                    : isDark
+                      ? "border border-white/8 text-zinc-400 hover:border-white/12 hover:bg-white/4 hover:text-white"
+                      : "border border-black/8 text-zinc-500 hover:border-black/12 hover:bg-black/3 hover:text-black"
+                }`}
               >
                 {isImporting ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 ) : isImported ? (
-                  "Imported"
+                  <>
+                    <CheckCircle2 className="h-3 w-3" />
+                    Imported
+                  </>
                 ) : (
                   <>
                     <Download className="h-3 w-3" />

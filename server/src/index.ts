@@ -8,6 +8,9 @@ import "./config/passport"; // Initialize passport strategies
 import authRoutes from "./routes/auth";
 import githubRoutes from "./routes/github";
 import userRoutes from "./routes/user";
+import workspaceRoutes from "./routes/workspace";
+import workspaceGitRoutes from "./routes/workspace-git";
+import workspaceRunRoutes from "./routes/workspace-run";
 
 const app = express();
 
@@ -29,6 +32,9 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/github", githubRoutes);
 app.use("/api/user", userRoutes);
+app.use("/api/workspace", workspaceRoutes);
+app.use("/api/workspace-git", workspaceGitRoutes);
+app.use("/api/workspace-run", workspaceRunRoutes);
 
 // ── Health check ───────────────────────────────────────
 app.get("/api/health", (_req, res) => {
