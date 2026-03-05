@@ -2,6 +2,8 @@ import axios from "axios";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+export { API_BASE };
+
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
   withCredentials: true, // Send cookies with every request
@@ -60,6 +62,8 @@ export const workspaceAPI = {
   // Info & init
   getWorkspace: (id: string) => api.get(`/workspace/${id}`),
   initWorkspace: (id: string) => api.post(`/workspace/${id}/init`),
+  /** SSE URL for streaming workspace provisioning logs */
+  setupStreamUrl: (id: string) => `${API_BASE}/api/workspace/${id}/setup`,
 
   // File system
   getFileTree: (id: string) => api.get(`/workspace/${id}/files`),
@@ -87,7 +91,7 @@ export const workspaceAPI = {
   gitSwitchBranch: (id: string, name: string, create?: boolean) =>
     api.post(`/workspace-git/${id}/branch`, { name, create }),
 
-  // Run & terminal
+  // Run & terminal (legacy)
   run: (id: string, command?: string) =>
     api.post(`/workspace-run/${id}/run`, { command }),
   stop: (id: string) => api.post(`/workspace-run/${id}/stop`),
@@ -95,6 +99,16 @@ export const workspaceAPI = {
     api.get(`/workspace-run/${id}/output`, { params: { since } }),
   exec: (id: string, command: string) =>
     api.post(`/workspace-run/${id}/exec`, { command }),
+
+  // PTY terminal sessions
+  createTerminal: (id: string) =>
+    api.post(`/workspace/${id}/terminal`),
+  listTerminals: (id: string) =>
+    api.get(`/workspace/${id}/terminals`),
+  killTerminal: (id: string, terminalId: string) =>
+    api.delete(`/workspace/${id}/terminal/${terminalId}`),
+  resizeTerminal: (id: string, terminalId: string, cols: number, rows: number) =>
+    api.post(`/workspace/${id}/terminal/${terminalId}/resize`, { cols, rows }),
 };
 
 export default api;

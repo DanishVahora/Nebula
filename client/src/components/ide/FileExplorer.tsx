@@ -94,8 +94,8 @@ function FileTreeItem({
       <div
         className={`group flex items-center gap-1 px-2 py-[3px] cursor-pointer transition-colors ${
           isActive
-            ? "bg-[#37373d] text-[#ffffff]"
-            : "text-[#cccccc] hover:bg-[#2a2d2e]"
+            ? "bg-[#e8e8e8] text-[#1f2328]"
+            : "text-[#424242] hover:bg-[#eaeef2]"
         }`}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={handleClick}
@@ -105,9 +105,9 @@ function FileTreeItem({
         {isDir ? (
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
             {isOpen ? (
-              <ChevronDown className="w-3.5 h-3.5 text-[#858585]" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#656d76]" />
             ) : (
-              <ChevronRight className="w-3.5 h-3.5 text-[#858585]" />
+              <ChevronRight className="w-3.5 h-3.5 text-[#656d76]" />
             )}
           </span>
         ) : (
@@ -134,7 +134,7 @@ function FileTreeItem({
               if (e.key === "Enter") submitRename();
               if (e.key === "Escape") setIsRenaming(false);
             }}
-            className="flex-1 text-[13px] bg-[#3c3c3c] border border-[#007acc] rounded px-1 py-0 outline-none text-[#cccccc] min-w-0"
+            className="flex-1 text-[13px] bg-white border border-[#0969da] rounded px-1 py-0 outline-none text-[#1f2328] min-w-0"
             autoFocus
             onClick={(e) => e.stopPropagation()}
           />
@@ -146,19 +146,19 @@ function FileTreeItem({
           <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
             {isDir && (
               <>
-                <button onClick={() => handleCreate("file")} className="p-0.5 hover:bg-[#3c3c3c] rounded" title="New file">
-                  <Plus className="w-3.5 h-3.5 text-[#858585] hover:text-[#cccccc]" />
+                <button onClick={() => handleCreate("file")} className="p-0.5 hover:bg-[#eaeef2] rounded" title="New file">
+                  <Plus className="w-3.5 h-3.5 text-[#656d76] hover:text-[#1f2328]" />
                 </button>
-                <button onClick={() => handleCreate("directory")} className="p-0.5 hover:bg-[#3c3c3c] rounded" title="New folder">
-                  <FolderPlus className="w-3.5 h-3.5 text-[#858585] hover:text-[#cccccc]" />
+                <button onClick={() => handleCreate("directory")} className="p-0.5 hover:bg-[#eaeef2] rounded" title="New folder">
+                  <FolderPlus className="w-3.5 h-3.5 text-[#656d76] hover:text-[#1f2328]" />
                 </button>
               </>
             )}
-            <button onClick={startRename} className="p-0.5 hover:bg-[#3c3c3c] rounded" title="Rename">
-              <Pencil className="w-3 h-3 text-[#858585] hover:text-[#cccccc]" />
+            <button onClick={startRename} className="p-0.5 hover:bg-[#eaeef2] rounded" title="Rename">
+              <Pencil className="w-3 h-3 text-[#656d76] hover:text-[#1f2328]" />
             </button>
-            <button onClick={() => onDeleteFile(entry.path)} className="p-0.5 hover:bg-[#3c3c3c] rounded" title="Delete">
-              <Trash2 className="w-3 h-3 text-[#858585] hover:text-[#c74e39]" />
+            <button onClick={() => onDeleteFile(entry.path)} className="p-0.5 hover:bg-[#eaeef2] rounded" title="Delete">
+              <Trash2 className="w-3 h-3 text-[#656d76] hover:text-[#cf222e]" />
             </button>
           </div>
         )}
@@ -170,7 +170,7 @@ function FileTreeItem({
           {isCreating === "directory" ? (
             <Folder className="w-4 h-4 text-[#dcb67a] shrink-0" />
           ) : (
-            <File className="w-4 h-4 text-[#858585] shrink-0" />
+            <File className="w-4 h-4 text-[#656d76] shrink-0" />
           )}
           <input
             type="text"
@@ -179,7 +179,7 @@ function FileTreeItem({
             onBlur={() => { if (newName.trim()) submitCreate(); else setIsCreating(null); }}
             onKeyDown={(e) => { if (e.key === "Enter") submitCreate(); if (e.key === "Escape") setIsCreating(null); }}
             placeholder={isCreating === "directory" ? "folder name" : "file name"}
-            className="flex-1 text-[13px] bg-[#3c3c3c] border border-[#007acc] rounded px-1.5 py-0.5 outline-none text-[#cccccc] placeholder-[#6a6a6a] min-w-0"
+            className="flex-1 text-[13px] bg-white border border-[#0969da] rounded px-1.5 py-0.5 outline-none text-[#1f2328] placeholder-[#8b949e] min-w-0"
             autoFocus
           />
         </div>
@@ -218,24 +218,24 @@ export function FileExplorer({
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 shrink-0">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-[#bbbbbb]">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[#656d76]">
           Explorer
         </span>
         <div className="flex items-center gap-0.5">
           <button
             onClick={() => { setIsCreatingRoot("file"); setRootName(""); }}
-            className="p-1 hover:bg-[#3c3c3c] rounded transition-colors" title="New file"
+            className="p-1 hover:bg-[#eaeef2] rounded transition-colors" title="New file"
           >
-            <Plus className="w-3.5 h-3.5 text-[#858585] hover:text-[#cccccc]" />
+            <Plus className="w-3.5 h-3.5 text-[#656d76] hover:text-[#1f2328]" />
           </button>
           <button
             onClick={() => { setIsCreatingRoot("directory"); setRootName(""); }}
-            className="p-1 hover:bg-[#3c3c3c] rounded transition-colors" title="New folder"
+            className="p-1 hover:bg-[#eaeef2] rounded transition-colors" title="New folder"
           >
-            <FolderPlus className="w-3.5 h-3.5 text-[#858585] hover:text-[#cccccc]" />
+            <FolderPlus className="w-3.5 h-3.5 text-[#656d76] hover:text-[#1f2328]" />
           </button>
-          <button onClick={onRefresh} className="p-1 hover:bg-[#3c3c3c] rounded transition-colors" title="Refresh">
-            <RefreshCw className="w-3.5 h-3.5 text-[#858585] hover:text-[#cccccc]" />
+          <button onClick={onRefresh} className="p-1 hover:bg-[#eaeef2] rounded transition-colors" title="Refresh">
+            <RefreshCw className="w-3.5 h-3.5 text-[#656d76] hover:text-[#1f2328]" />
           </button>
         </div>
       </div>
@@ -245,7 +245,7 @@ export function FileExplorer({
           {isCreatingRoot === "directory" ? (
             <Folder className="w-4 h-4 text-[#dcb67a] shrink-0" />
           ) : (
-            <File className="w-4 h-4 text-[#858585] shrink-0" />
+            <File className="w-4 h-4 text-[#656d76] shrink-0" />
           )}
           <input
             type="text" value={rootName}
@@ -253,7 +253,7 @@ export function FileExplorer({
             onBlur={() => { if (rootName.trim()) submitRootCreate(); else setIsCreatingRoot(null); }}
             onKeyDown={(e) => { if (e.key === "Enter") submitRootCreate(); if (e.key === "Escape") setIsCreatingRoot(null); }}
             placeholder={isCreatingRoot === "directory" ? "folder name" : "file name"}
-            className="flex-1 text-[13px] bg-[#3c3c3c] border border-[#007acc] rounded px-1.5 py-0.5 outline-none text-[#cccccc] placeholder-[#6a6a6a] min-w-0"
+            className="flex-1 text-[13px] bg-white border border-[#0969da] rounded px-1.5 py-0.5 outline-none text-[#1f2328] placeholder-[#8b949e] min-w-0"
             autoFocus
           />
         </div>
@@ -263,8 +263,8 @@ export function FileExplorer({
       <div className="flex-1 overflow-y-auto py-0.5">
         {files.length === 0 ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-[12px] text-[#858585]">No files yet</p>
-            <p className="text-[11px] text-[#6a6a6a] mt-1">Create a file to get started</p>
+            <p className="text-[12px] text-[#656d76]">No files yet</p>
+            <p className="text-[11px] text-[#8b949e] mt-1">Create a file to get started</p>
           </div>
         ) : (
           files.map((entry) => (

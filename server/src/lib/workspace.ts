@@ -12,10 +12,15 @@ const WORKSPACES_ROOT = path.resolve(
   process.env.WORKSPACES_DIR || path.join(process.cwd(), "workspaces")
 );
 
-export function getWorkspacePath(workspaceId: string): string {
-  // Sanitize to prevent path traversal
+/** Root of a workspace (contains workspace.json + project/) */
+export function getWorkspaceRoot(workspaceId: string): string {
   const safe = workspaceId.replace(/[^a-zA-Z0-9_-]/g, "");
   return path.join(WORKSPACES_ROOT, safe);
+}
+
+/** Project directory inside a workspace (all project files live here) */
+export function getWorkspacePath(workspaceId: string): string {
+  return path.join(getWorkspaceRoot(workspaceId), "project");
 }
 
 // ── Initialize workspace on disk ────────────────────────
@@ -45,9 +50,9 @@ export async function initWorkspaceFiles(
 export async function deleteWorkspaceFiles(
   workspaceId: string
 ): Promise<void> {
-  const wsPath = getWorkspacePath(workspaceId);
+  const wsRoot = getWorkspaceRoot(workspaceId);
   try {
-    await fs.rm(wsPath, { recursive: true, force: true });
+    await fs.rm(wsRoot, { recursive: true, force: true });
   } catch {
     // Ignore if already deleted
   }

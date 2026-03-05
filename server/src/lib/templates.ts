@@ -6,8 +6,11 @@ import path from "path";
 
 export type TemplateId =
   | "blank"
+  | "dsa"
   | "static"
+  | "static-web"
   | "node"
+  | "nodejs"
   | "react"
   | "react-ts"
   | "nextjs"
@@ -15,7 +18,8 @@ export type TemplateId =
   | "angular"
   | "express"
   | "typescript"
-  | "vite-react-ts";
+  | "vite-react-ts"
+  | "fullstack";
 
 export interface TemplateInfo {
   id: TemplateId;
@@ -61,12 +65,12 @@ export const TEMPLATE_META: Record<TemplateId, TemplateInfo> = {
   },
   react: {
     id: "react",
-    name: "React",
-    description: "React with Create React App",
+    name: "React (Vite)",
+    description: "React + TypeScript with Vite",
     icon: "atom",
-    runCommand: "npm start",
+    runCommand: "npm run dev",
     installCommand: "npm install",
-    language: "javascript",
+    language: "typescript",
     starterDir: "react",
   },
   "react-ts": {
@@ -138,6 +142,46 @@ export const TEMPLATE_META: Record<TemplateId, TemplateInfo> = {
     installCommand: "npm install",
     language: "typescript",
     starterDir: "typescript",
+  },
+  dsa: {
+    id: "dsa",
+    name: "DSA Playground",
+    description: "Competitive programming with C++, Python, Java & JS",
+    icon: "code",
+    runCommand: "node index.js",
+    installCommand: null,
+    language: "multi",
+    starterDir: "",
+  },
+  "static-web": {
+    id: "static-web",
+    name: "Static Web Project",
+    description: "Classic HTML, CSS & JavaScript website",
+    icon: "globe",
+    runCommand: "npx servor . --reload",
+    installCommand: null,
+    language: "html",
+    starterDir: "",
+  },
+  nodejs: {
+    id: "nodejs",
+    name: "Node.js API",
+    description: "Express.js REST API server",
+    icon: "server",
+    runCommand: "node server.js",
+    installCommand: "npm install",
+    language: "javascript",
+    starterDir: "",
+  },
+  fullstack: {
+    id: "fullstack",
+    name: "Fullstack App",
+    description: "React frontend + Express backend",
+    icon: "layers",
+    runCommand: "npm run dev:client",
+    installCommand: "npm install",
+    language: "typescript",
+    starterDir: "",
   },
 };
 

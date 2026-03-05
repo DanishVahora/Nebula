@@ -11,6 +11,10 @@ import userRoutes from "./routes/user";
 import workspaceRoutes from "./routes/workspace";
 import workspaceGitRoutes from "./routes/workspace-git";
 import workspaceRunRoutes from "./routes/workspace-run";
+import workspaceTerminalRoutes, {
+  attachTerminalWebSocket,
+} from "./routes/workspace-terminal";
+import { terminalManager } from "./lib/terminal-manager";
 
 const app = express();
 
@@ -35,6 +39,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/workspace", workspaceRoutes);
 app.use("/api/workspace-git", workspaceGitRoutes);
 app.use("/api/workspace-run", workspaceRunRoutes);
+app.use("/api/workspace", workspaceTerminalRoutes);
 
 // ── Health check ───────────────────────────────────────
 app.get("/api/health", (_req, res) => {
@@ -46,6 +51,9 @@ import http from "http";
 
 const server = http.createServer(app);
 
+// ── Attach terminal WebSocket handler ──────────────────
+attachTerminalWebSocket(server);
+
 server.listen(env.PORT, () => {
   console.log(`🚀 Nebula server running on http://localhost:${env.PORT}`);
   console.log(`   Environment: ${env.NODE_ENV}`);
@@ -53,6 +61,7 @@ server.listen(env.PORT, () => {
 });
 
 process.on("SIGTERM", () => {
+  terminalManager.disposeAll();
   server.close();
 });
 

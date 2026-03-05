@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { authenticate } from "../middleware/auth";
 import prisma from "../lib/prisma";
-import { initWorkspaceFiles, deleteWorkspaceFiles } from "../lib/workspace";
+import { deleteWorkspaceFiles } from "../lib/workspace";
 
 const router = Router();
 
@@ -58,12 +58,13 @@ router.post(
           language: language || null,
           template: template || null,
           visibility: visibility || "private",
+          status: "provisioning",
           userId: req.user!.userId,
         },
       });
 
-      // Initialize workspace files on disk
-      await initWorkspaceFiles(workspace.id, template || "blank");
+      // Workspace files are initialized via the SSE /setup endpoint
+      // (the frontend opens an EventSource after receiving the workspace id)
 
       res.status(201).json({ workspace });
     } catch (error) {

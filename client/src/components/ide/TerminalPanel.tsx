@@ -1,138 +1,322 @@
-import { useState, useRef, useEffect } from "react";
-import { Trash2, Terminal as TerminalIcon } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import "@xterm/xterm/css/xterm.css";
+import { workspaceAPI, API_BASE } from "@/lib/api";
+import {
+  Plus,
+  X,
+  Terminal as TerminalIcon,
+  Trash2,
+} from "lucide-react";
 
-interface TerminalPanelProps {
-  lines: string[];
-  isRunning: boolean;
-  onExec: (command: string) => void;
-  onClear: () => void;
+interface TerminalTab {
+  id: string;          // server terminalId
+  label: string;       // "Terminal 1", "Terminal 2", etc.
+  terminal: Terminal;
+  fitAddon: FitAddon;
+  ws: WebSocket | null;
+  alive: boolean;
 }
 
-export function TerminalPanel({
-  lines,
-  isRunning,
-  onExec,
-  onClear,
-}: TerminalPanelProps) {
-  const [input, setInput] = useState("");
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+interface TerminalPanelProps {
+  workspaceId: string;
+}
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines]);
+export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
+  const [tabs, setTabs] = useState<TerminalTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
+  const tabCounterRef = useRef(0);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  // Keep a ref to the latest tabs so callbacks can read them
+  const tabsRef = useRef<TerminalTab[]>([]);
+  tabsRef.current = tabs;
+  const activeTabIdRef = useRef<string | null>(null);
+  activeTabIdRef.current = activeTabId;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-    onExec(input.trim());
-    setHistory((prev) => [...prev, input.trim()]);
-    setHistoryIndex(-1);
-    setInput("");
-  };
+  // Compute WS base URL from API_BASE (http→ws, https→wss)
+  const wsBaseUrl = API_BASE.replace(/^http/, "ws");
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      if (history.length === 0) return;
-      const newIdx = historyIndex === -1 ? history.length - 1 : Math.max(0, historyIndex - 1);
-      setHistoryIndex(newIdx);
-      setInput(history[newIdx]);
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      if (historyIndex === -1) return;
-      const newIdx = historyIndex + 1;
-      if (newIdx >= history.length) { setHistoryIndex(-1); setInput(""); }
-      else { setHistoryIndex(newIdx); setInput(history[newIdx]); }
+  // ── Create a new terminal session ─────────────────────
+  const createTerminal = useCallback(async () => {
+    try {
+      const res = await workspaceAPI.createTerminal(workspaceId);
+      const { terminalId } = res.data;
+      tabCounterRef.current += 1;
+
+      const term = new Terminal({
+        cursorBlink: true,
+        cursorStyle: "bar",
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
+        lineHeight: 1.35,
+        theme: {
+          background: "#1e1e1e",
+          foreground: "#d4d4d4",
+          cursor: "#aeafad",
+          selectionBackground: "#264f78",
+          selectionForeground: "#ffffff",
+          black: "#1e1e1e",
+          red: "#f44747",
+          green: "#6a9955",
+          yellow: "#dcdcaa",
+          blue: "#569cd6",
+          magenta: "#c586c0",
+          cyan: "#4ec9b0",
+          white: "#d4d4d4",
+          brightBlack: "#808080",
+          brightRed: "#f44747",
+          brightGreen: "#6a9955",
+          brightYellow: "#dcdcaa",
+          brightBlue: "#569cd6",
+          brightMagenta: "#c586c0",
+          brightCyan: "#4ec9b0",
+          brightWhite: "#ffffff",
+        },
+        allowTransparency: false,
+        scrollback: 5000,
+      });
+
+      const fitAddon = new FitAddon();
+      const webLinksAddon = new WebLinksAddon();
+      term.loadAddon(fitAddon);
+      term.loadAddon(webLinksAddon);
+
+      // Connect WebSocket
+      const wsUrl = `${wsBaseUrl}/ws/terminal/${workspaceId}/${terminalId}`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        // Send initial size
+        try {
+          fitAddon.fit();
+          ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+        } catch {
+          // Ignore fit errors before mount
+        }
+      };
+
+      ws.onmessage = (event) => {
+        term.write(event.data);
+      };
+
+      ws.onclose = () => {
+        setTabs((prev) =>
+          prev.map((t) => (t.id === terminalId ? { ...t, alive: false, ws: null } : t))
+        );
+      };
+
+      ws.onerror = () => {
+        // Will trigger onclose
+      };
+
+      // Forward terminal input to WS
+      term.onData((data) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(data);
+        }
+      });
+
+      const newTab: TerminalTab = {
+        id: terminalId,
+        label: `Terminal ${tabCounterRef.current}`,
+        terminal: term,
+        fitAddon,
+        ws,
+        alive: true,
+      };
+
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(terminalId);
+    } catch (error) {
+      console.error("Failed to create terminal:", error);
     }
-  };
+  }, [workspaceId, wsBaseUrl]);
+
+  // ── Close a terminal tab ──────────────────────────────
+  const closeTerminal = useCallback(
+    async (terminalId: string) => {
+      const tab = tabsRef.current.find((t) => t.id === terminalId);
+      if (tab) {
+        tab.ws?.close();
+        tab.terminal.dispose();
+        try {
+          await workspaceAPI.killTerminal(workspaceId, terminalId);
+        } catch {
+          // May already be dead
+        }
+      }
+
+      setTabs((prev) => {
+        const filtered = prev.filter((t) => t.id !== terminalId);
+        if (activeTabIdRef.current === terminalId) {
+          setActiveTabId(filtered.length > 0 ? filtered[filtered.length - 1].id : null);
+        }
+        return filtered;
+      });
+    },
+    [workspaceId]
+  );
+
+  // ── Mount/unmount terminal into DOM when active tab changes ──
+  useEffect(() => {
+    const container = terminalContainerRef.current;
+    if (!container) return;
+
+    // Remove existing children
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (!activeTab) return;
+
+    activeTab.terminal.open(container);
+
+    // Fit after a microtask so the DOM dimensions are ready
+    requestAnimationFrame(() => {
+      try {
+        activeTab.fitAddon.fit();
+        // Notify backend of the fitted size
+        if (activeTab.ws?.readyState === WebSocket.OPEN) {
+          activeTab.ws.send(
+            JSON.stringify({
+              type: "resize",
+              cols: activeTab.terminal.cols,
+              rows: activeTab.terminal.rows,
+            })
+          );
+        }
+      } catch {
+        // Ignore
+      }
+      activeTab.terminal.focus();
+    });
+  }, [activeTabId, tabs]);
+
+  // ── Resize observer for the container ─────────────────
+  useEffect(() => {
+    const container = terminalContainerRef.current;
+    if (!container) return;
+
+    resizeObserverRef.current = new ResizeObserver(() => {
+      const activeTab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+      if (!activeTab) return;
+      try {
+        activeTab.fitAddon.fit();
+        if (activeTab.ws?.readyState === WebSocket.OPEN) {
+          activeTab.ws.send(
+            JSON.stringify({
+              type: "resize",
+              cols: activeTab.terminal.cols,
+              rows: activeTab.terminal.rows,
+            })
+          );
+        }
+      } catch {
+        // Ignore
+      }
+    });
+
+    resizeObserverRef.current.observe(container);
+    return () => resizeObserverRef.current?.disconnect();
+  }, []);
+
+  // ── Auto-create first terminal on mount ───────────────
+  useEffect(() => {
+    createTerminal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Clean up all terminals on unmount ─────────────────
+  useEffect(() => {
+    return () => {
+      tabsRef.current.forEach((tab) => {
+        tab.ws?.close();
+        tab.terminal.dispose();
+      });
+    };
+  }, []);
 
   return (
-    <div
-      className="h-full flex flex-col bg-[#1e1e1e] font-mono text-[13px]"
-      onClick={() => inputRef.current?.focus()}
-    >
-      {/* Tab bar */}
-      <div className="flex items-center justify-between bg-[#252526] shrink-0">
-        <div className="flex items-center">
-          {/* Terminal tab */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e1e1e] text-[#cccccc] border-t border-t-[#007acc] text-[12px]">
-            <TerminalIcon className="w-3.5 h-3.5" />
-            <span>Terminal</span>
-            {isRunning && (
-              <span className="flex items-center gap-1 text-[10px] text-[#89d185]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#89d185] animate-pulse" />
-              </span>
-            )}
-          </div>
-          {/* Problems tab placeholder */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 text-[#858585] text-[12px] hover:text-[#cccccc] cursor-pointer transition-colors">
-            <span>Problems</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-3 py-1.5 text-[#858585] text-[12px] hover:text-[#cccccc] cursor-pointer transition-colors">
-            <span>Output</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-0.5 pr-2">
+    <div className="h-full flex flex-col bg-[#1e1e1e] font-mono text-[13px] relative">
+      {/* ── Tab bar ──────────────────────────────────── */}
+      <div className="flex items-center justify-between bg-[#252526] shrink-0 border-b border-[#1e1e1e]">
+        <div className="flex items-center overflow-x-auto" style={{ scrollbarWidth: "thin" }}>
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            return (
+              <div
+                key={tab.id}
+                className={`group flex items-center gap-1.5 px-3 py-1.5 cursor-pointer border-r border-[#1e1e1e] min-w-0 max-w-[160px] transition-colors ${
+                  isActive
+                    ? "bg-[#1e1e1e] text-[#d4d4d4] border-t-2 border-t-[#007acc]"
+                    : "bg-[#2d2d2d] text-[#858585] hover:bg-[#2d2d2d]/80 border-t-2 border-t-transparent"
+                }`}
+                onClick={() => setActiveTabId(tab.id)}
+              >
+                <TerminalIcon className="w-3.5 h-3.5 shrink-0" />
+                <span className="text-[12px] truncate">{tab.label}</span>
+                {!tab.alive && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#f44747] shrink-0" title="Disconnected" />
+                )}
+                <button
+                  className="ml-auto p-0.5 hover:bg-[#3c3c3c] rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTerminal(tab.id);
+                  }}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+
+          {/* ── New terminal button ─────────────────── */}
           <button
-            onClick={(e) => { e.stopPropagation(); onClear(); }}
-            className="p-1 hover:bg-[#3c3c3c] rounded transition-colors"
-            title="Clear terminal"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-[#858585] hover:text-[#d4d4d4] hover:bg-[#3c3c3c] transition-colors rounded-sm"
+            onClick={createTerminal}
+            title="New Terminal"
           >
-            <Trash2 className="w-3.5 h-3.5 text-[#858585] hover:text-[#cccccc]" />
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-0.5 pr-2 shrink-0">
+          <button
+            className="p-1 hover:bg-[#3c3c3c] rounded transition-colors"
+            title="Kill terminal"
+            onClick={() => {
+              if (activeTabId) closeTerminal(activeTabId);
+            }}
+          >
+            <Trash2 className="w-3.5 h-3.5 text-[#858585] hover:text-[#d4d4d4]" />
           </button>
         </div>
       </div>
 
-      {/* Output */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-0"
-        style={{ scrollbarWidth: "thin", scrollbarColor: "#3c3c3c #1e1e1e" }}
-      >
-        {lines.length === 0 && (
-          <div className="text-[#858585] text-[12px] py-1">
-            Terminal ready — type a command or click Run
-          </div>
-        )}
-        {lines.map((line, i) => (
-          <div
-            key={i}
-            className={`whitespace-pre-wrap break-all leading-[20px] ${
-              line.startsWith("[stderr]") || line.startsWith("[Error]") || line.startsWith("[Git Error]")
-                ? "text-[#f14c4c]"
-                : line.startsWith("✓")
-                ? "text-[#89d185]"
-                : line.startsWith("▶")
-                ? "text-[#3794ff]"
-                : line.startsWith("$")
-                ? "text-[#dcdcaa]"
-                : line.startsWith("[Process")
-                ? "text-[#858585]"
-                : "text-[#d4d4d4]"
-            }`}
-          >
-            {line}
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
+      {/* ── Terminal output area ─────────────────────── */}
+      <div
+        ref={terminalContainerRef}
+        className="flex-1 min-h-0"
+        style={{ padding: "4px 0 0 4px" }}
+      />
 
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="flex items-center border-t border-[#333] bg-[#1e1e1e] shrink-0">
-        <span className="pl-3 text-[#89d185] text-[13px] select-none">$</span>
-        <input
-          ref={inputRef}
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="flex-1 bg-transparent text-[#d4d4d4] outline-none px-2 py-2 text-[13px] font-mono placeholder-[#4a4a4a]"
-          placeholder="Type a command..."
-          spellCheck={false}
-          autoComplete="off"
-        />
-      </form>
+      {/* ── Empty state ─────────────────────────────── */}
+      {tabs.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <button
+            onClick={createTerminal}
+            className="flex items-center gap-2 px-4 py-2 bg-[#0e639c] text-white rounded text-[13px] hover:bg-[#1177bb] transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Terminal
+          </button>
+        </div>
+      )}
     </div>
   );
 }

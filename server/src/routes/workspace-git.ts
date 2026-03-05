@@ -35,16 +35,23 @@ async function getGitForWorkspace(
   const exists = await workspaceExists(workspaceId);
   if (!exists) return null;
 
-  const git = simpleGit(wsPath);
-
-  // Configure git user
+  // Look up username for git config
   const account = await prisma.connectedAccount.findUnique({
     where: { userId_provider: { userId, provider: "github" } },
   });
-  if (account?.username) {
-    await git.addConfig("user.name", account.username);
-    await git.addConfig("user.email", `${account.username}@users.noreply.github.com`);
-  }
+
+  const username = account?.username ?? "orbit-user";
+  const email = `${username}@users.noreply.github.com`;
+
+  // Use environment variables instead of git config --local to avoid
+  // .git/config.lock race conditions when the workspace has no own .git dir
+  const git = simpleGit({
+    baseDir: wsPath,
+    config: [
+      `user.name=${username}`,
+      `user.email=${email}`,
+    ],
+  });
 
   return { git, token };
 }

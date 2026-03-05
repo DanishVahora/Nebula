@@ -69,10 +69,7 @@ export default function WorkspaceIDE() {
   const [showPreview, setShowPreview] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState(220);
 
-  // Terminal
-  const [terminalLines, setTerminalLines] = useState<string[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
 
   // Git
   const [gitBranch, setGitBranch] = useState<string | null>(null);
@@ -229,61 +226,16 @@ export default function WorkspaceIDE() {
     [workspaceId, loadFileTree, activeTab]
   );
 
-  // ── Run ─────────────────────────────────────────────────
-  const runWorkspace = useCallback(
-    async (command?: string) => {
-      if (!workspaceId) return;
-      try {
-        setShowTerminal(true);
-        setTerminalLines([]);
-        const res = await workspaceAPI.run(workspaceId, command);
-        setIsRunning(true);
-        setTerminalLines((prev) => [...prev, `▶ ${res.data.command}`]);
-      } catch (err: any) {
-        setTerminalLines((prev) => [...prev, `[Error] ${err.response?.data?.error || "Failed to run"}`]);
-      }
-    },
-    [workspaceId]
-  );
 
-  // ── Stop ────────────────────────────────────────────────
-  const stopWorkspace = useCallback(async () => {
-    if (!workspaceId) return;
-    try {
-      await workspaceAPI.stop(workspaceId);
-      setIsRunning(false);
-    } catch { /* Stop failed */ }
-  }, [workspaceId]);
-
-  // ── Execute command ─────────────────────────────────────
-  const execCommand = useCallback(
-    async (command: string) => {
-      if (!workspaceId) return;
-      try {
-        setTerminalLines((prev) => [...prev, `$ ${command}`]);
-        const res = await workspaceAPI.exec(workspaceId, command);
-        if (res.data.output) {
-          const lines = res.data.output.split("\n").filter((l: string) => l.trim());
-          setTerminalLines((prev) => [...prev, ...lines]);
-        }
-      } catch (err: any) {
-        setTerminalLines((prev) => [...prev, `[Error] ${err.response?.data?.error || "Command failed"}`]);
-      }
-    },
-    [workspaceId]
-  );
 
   // ── Git operations ──────────────────────────────────────
   const gitCommit = useCallback(
     async (message: string) => {
       if (!workspaceId) return;
       try {
-        const res = await workspaceAPI.gitCommit(workspaceId, message);
-        setTerminalLines((prev) => [...prev, `✓ ${res.data.message} (${res.data.summary?.changes || 0} changes)`]);
+        await workspaceAPI.gitCommit(workspaceId, message);
         loadGitStatus();
-      } catch (err: any) {
-        setTerminalLines((prev) => [...prev, `[Git Error] ${err.response?.data?.error || "Commit failed"}`]);
-      }
+      } catch { /* Commit failed */ }
     },
     [workspaceId, loadGitStatus]
   );
@@ -291,33 +243,24 @@ export default function WorkspaceIDE() {
   const gitPush = useCallback(async () => {
     if (!workspaceId) return;
     try {
-      const res = await workspaceAPI.gitPush(workspaceId);
-      setTerminalLines((prev) => [...prev, `✓ ${res.data.message}`]);
-    } catch (err: any) {
-      setTerminalLines((prev) => [...prev, `[Git Error] ${err.response?.data?.error || "Push failed"}`]);
-    }
+      await workspaceAPI.gitPush(workspaceId);
+    } catch { /* Push failed */ }
   }, [workspaceId]);
 
   const gitPull = useCallback(async () => {
     if (!workspaceId) return;
     try {
-      const res = await workspaceAPI.gitPull(workspaceId);
-      setTerminalLines((prev) => [...prev, `✓ ${res.data.message}`]);
+      await workspaceAPI.gitPull(workspaceId);
       loadFileTree();
-    } catch (err: any) {
-      setTerminalLines((prev) => [...prev, `[Git Error] ${err.response?.data?.error || "Pull failed"}`]);
-    }
+    } catch { /* Pull failed */ }
   }, [workspaceId, loadFileTree]);
 
   const gitInitRepo = useCallback(async () => {
     if (!workspaceId) return;
     try {
       await workspaceAPI.gitInit(workspaceId);
-      setTerminalLines((prev) => [...prev, "✓ Git repository initialized"]);
       loadGitStatus();
-    } catch (err: any) {
-      setTerminalLines((prev) => [...prev, `[Git Error] ${err.response?.data?.error || "Init failed"}`]);
-    }
+    } catch { /* Init failed */ }
   }, [workspaceId, loadGitStatus]);
 
   // ── Terminal resize ─────────────────────────────────────
@@ -341,25 +284,7 @@ export default function WorkspaceIDE() {
     document.addEventListener("mouseup", onMouseUp);
   }, [terminalHeight]);
 
-  // ── Poll terminal output ────────────────────────────────
-  useEffect(() => {
-    if (!workspaceId || !isRunning) {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-      return;
-    }
-    let offset = 0;
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await workspaceAPI.getOutput(workspaceId, offset);
-        if (res.data.output.length > 0) {
-          setTerminalLines((prev) => [...prev, ...res.data.output]);
-          offset = res.data.total;
-        }
-        if (!res.data.isRunning) setIsRunning(false);
-      } catch { /* Poll failed */ }
-    }, 1000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [workspaceId, isRunning]);
+
 
   // ── Initial load ────────────────────────────────────────
   useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
@@ -386,10 +311,10 @@ export default function WorkspaceIDE() {
   // ── Loading state ───────────────────────────────────────
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#1e1e1e]">
+      <div className="h-screen flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-[#007acc]" />
-          <p className="text-sm text-[#858585]">Loading workspace...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-[#0969da]" />
+          <p className="text-sm text-[#656d76]">Loading workspace...</p>
         </div>
       </div>
     );
@@ -397,14 +322,14 @@ export default function WorkspaceIDE() {
 
   if (error || !workspace) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#1e1e1e]">
+      <div className="h-screen flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-3 max-w-md text-center">
-          <AlertCircle className="w-10 h-10 text-red-400" />
-          <h2 className="text-lg font-semibold text-[#cccccc]">Workspace Error</h2>
-          <p className="text-sm text-[#858585]">{error || "Workspace not found"}</p>
+          <AlertCircle className="w-10 h-10 text-[#cf222e]" />
+          <h2 className="text-lg font-semibold text-[#1f2328]">Workspace Error</h2>
+          <p className="text-sm text-[#656d76]">{error || "Workspace not found"}</p>
           <button
             onClick={() => navigate("/dashboard")}
-            className="mt-2 px-4 py-2 text-sm bg-[#0e639c] text-white rounded hover:bg-[#1177bb] transition-colors"
+            className="mt-2 px-4 py-2 text-sm bg-[#0969da] text-white rounded hover:bg-[#0860c7] transition-colors"
           >
             Back to Dashboard
           </button>
@@ -427,13 +352,10 @@ export default function WorkspaceIDE() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#1e1e1e] overflow-hidden select-none">
+    <div className="h-screen flex flex-col bg-white overflow-hidden select-none">
       {/* ── Title Bar / Toolbar ──────────────────────── */}
       <IDEToolbar
         workspace={workspace}
-        isRunning={isRunning}
-        onRun={() => runWorkspace()}
-        onStop={stopWorkspace}
         onBack={() => navigate("/dashboard")}
         showPreview={showPreview}
         onTogglePreview={() => setShowPreview(!showPreview)}
@@ -445,7 +367,7 @@ export default function WorkspaceIDE() {
       {/* ── Main Content ─────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden">
         {/* ── Activity Bar (icon rail) ───────────────── */}
-        <div className="w-12 shrink-0 bg-[#333333] flex flex-col items-center py-1 border-r border-[#252526]">
+        <div className="w-12 shrink-0 bg-[#24292f] flex flex-col items-center py-1 border-r border-[#1b1f23]">
           <ActivityBarButton
             icon={<Files className="w-[22px] h-[22px]" />}
             active={activeSidebarPanel === "files" && showSidebar}
@@ -463,7 +385,7 @@ export default function WorkspaceIDE() {
               <div className="relative">
                 <GitBranch className="w-[22px] h-[22px]" />
                 {changedFilesCount > 0 && (
-                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#007acc] text-white text-[10px] font-bold flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#0969da] text-white text-[10px] font-bold flex items-center justify-center">
                     {changedFilesCount}
                   </span>
                 )}
@@ -486,7 +408,7 @@ export default function WorkspaceIDE() {
 
         {/* ── Sidebar Panel ──────────────────────────── */}
         {showSidebar && (
-          <div className="w-64 shrink-0 bg-[#252526] border-r border-[#1e1e1e] overflow-hidden flex flex-col">
+          <div className="w-64 shrink-0 bg-[#f6f8fa] border-r border-[#d0d7de] overflow-hidden flex flex-col">
             {activeSidebarPanel === "files" && (
               <FileExplorer
                 files={fileTree}
@@ -513,7 +435,7 @@ export default function WorkspaceIDE() {
             {activeSidebarPanel === "search" && (
               <div className="flex flex-col h-full">
                 <div className="px-4 py-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#bbbbbb]">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#656d76]">
                     Search
                   </span>
                 </div>
@@ -521,11 +443,11 @@ export default function WorkspaceIDE() {
                   <input
                     type="text"
                     placeholder="Search files..."
-                    className="w-full px-2.5 py-1.5 text-[13px] bg-[#3c3c3c] border border-[#3c3c3c] rounded text-[#cccccc] outline-none focus:border-[#007acc] placeholder-[#858585]"
+                    className="w-full px-2.5 py-1.5 text-[13px] bg-white border border-[#d0d7de] rounded text-[#1f2328] outline-none focus:border-[#0969da] placeholder-[#8b949e]"
                   />
                 </div>
                 <div className="flex-1 flex items-center justify-center px-4">
-                  <p className="text-[12px] text-[#858585] text-center">
+                  <p className="text-[12px] text-[#8b949e] text-center">
                     Type to search across all workspace files
                   </p>
                 </div>
@@ -553,7 +475,7 @@ export default function WorkspaceIDE() {
 
             {/* Preview */}
             {showPreview && isWebTemplate && (
-              <div className="w-[40%] shrink-0 border-l border-[#1e1e1e]">
+              <div className="w-[40%] shrink-0 border-l border-[#d0d7de]">
                 <PreviewPanel workspace={workspace} />
               </div>
             )}
@@ -562,7 +484,7 @@ export default function WorkspaceIDE() {
           {/* Terminal resize handle */}
           {showTerminal && (
             <div
-              className="h-1 bg-[#252526] hover:bg-[#007acc] cursor-ns-resize transition-colors shrink-0"
+              className="h-1 bg-[#e8e8e8] hover:bg-[#0969da] cursor-ns-resize transition-colors shrink-0"
               onMouseDown={handleTerminalResizeStart}
             />
           )}
@@ -570,19 +492,14 @@ export default function WorkspaceIDE() {
           {/* Status bar above terminal or bottom bar */}
           {showTerminal && (
             <div style={{ height: terminalHeight }} className="shrink-0">
-              <TerminalPanel
-                lines={terminalLines}
-                isRunning={isRunning}
-                onExec={execCommand}
-                onClear={() => setTerminalLines([])}
-              />
+              <TerminalPanel workspaceId={workspaceId!} />
             </div>
           )}
         </div>
       </div>
 
       {/* ── Status Bar ───────────────────────────────── */}
-      <div className="h-[22px] shrink-0 flex items-center justify-between px-2 bg-[#007acc] text-white text-[11px]">
+      <div className="h-[22px] shrink-0 flex items-center justify-between px-2 bg-[#0969da] text-white text-[11px]">
         <div className="flex items-center gap-3">
           {gitBranch && (
             <button
@@ -601,12 +518,6 @@ export default function WorkspaceIDE() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {isRunning && (
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#89d185] animate-pulse" />
-              Running
-            </span>
-          )}
           {activeFileTab && (
             <span className="opacity-80">{activeFileTab.language}</span>
           )}

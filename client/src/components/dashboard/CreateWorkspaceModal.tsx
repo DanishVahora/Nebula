@@ -1,4 +1,5 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -24,7 +25,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { userAPI, githubAPI } from "@/lib/api";
+import { userAPI, githubAPI, workspaceAPI } from "@/lib/api";
 
 /* ─── Template definitions ──────────────────────────────── */
 
@@ -116,11 +117,15 @@ const templates: Template[] = [
 
 const templateDescriptions: Record<string, string> = {
   blank: "An empty workspace with no preconfigured files. Perfect for custom setups.",
+  dsa: "Competitive programming workspace with C++, Python, Java & JavaScript starter files.",
+  "static-web": "A classic web project with index.html, style.css, and script.js.",
   static: "A classic web project with index.html, styles.css, and script.js ready to go.",
-  react: "A React project with Create React App and JavaScript.",
+  react: "A modern React + TypeScript project powered by Vite.",
   "react-ts": "A React + TypeScript project with Create React App.",
   "vite-react-ts": "A Vite-powered React + TypeScript app with Tailwind CSS and modern tooling.",
   nextjs: "A Next.js app with App Router, TypeScript, and Tailwind CSS preconfigured.",
+  nodejs: "An Express.js REST API server with basic routes and middleware.",
+  fullstack: "React frontend + Express backend in one workspace.",
   vue: "A Vue 3 app with Vue CLI, ready to develop.",
   angular: "An Angular framework project with TypeScript.",
   node: "A simple Node.js project to start building.",
@@ -145,6 +150,7 @@ export function CreateWorkspaceModal({
 }: CreateWorkspaceModalProps) {
   const { isDark } = useTheme();
   const { hasGitHubConnected } = useAuth();
+  const navigate = useNavigate();
 
   // Steps
   type Step = "template" | "config" | "creating";
@@ -165,6 +171,10 @@ export function CreateWorkspaceModal({
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
 
+  // Log streaming
+  const [logs, setLogs] = useState<string[]>([]);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+
   // Reset on open/close
   useEffect(() => {
     if (open) {
@@ -176,6 +186,7 @@ export function CreateWorkspaceModal({
       setCreating(false);
       setError(null);
       setCreated(false);
+      setLogs([]);
     }
   }, [open]);
 
@@ -188,17 +199,29 @@ export function CreateWorkspaceModal({
     return () => window.removeEventListener("keydown", handleKey);
   }, [open, creating, onClose]);
 
+  // Auto-scroll logs
+  useEffect(() => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop =
+        logsContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
+
   const handleSelectTemplate = (t: Template) => {
     setSelectedTemplate(t);
     // Auto-generate a workspace name from template
     if (!workspaceName) {
       const nameMap: Record<string, string> = {
         blank: "my-workspace",
+        dsa: "dsa-playground",
+        "static-web": "static-site",
         static: "static-site",
         react: "react-app",
         "react-ts": "react-ts-app",
         "vite-react-ts": "vite-react-app",
         nextjs: "nextjs-app",
+        nodejs: "node-api",
+        fullstack: "fullstack-app",
         vue: "vue-app",
         angular: "angular-app",
         node: "node-project",
@@ -221,9 +244,10 @@ export function CreateWorkspaceModal({
     setCreating(true);
     setError(null);
     setStep("creating");
+    setLogs([]);
 
     try {
-      // Step 1: Create the workspace
+      // Step 1: Create the workspace record
       const { data } = await userAPI.createWorkspace({
         name: workspaceName.trim(),
         description: templateDescriptions[selectedTemplate.id] || undefined,
@@ -232,32 +256,73 @@ export function CreateWorkspaceModal({
         visibility,
       });
 
+      const workspaceId = data.workspace.id;
+
       // Step 2: If GitHub repo creation is enabled and user has GitHub connected
-      if (createGithubRepo && hasGitHubConnected && data.workspace) {
+      if (createGithubRepo && hasGitHubConnected && workspaceId) {
         try {
           await githubAPI.createRepo({
             name: workspaceName.trim(),
             description: `${selectedTemplate.name} workspace created with Orbit`,
             isPrivate: visibility === "private",
-            workspaceId: data.workspace.id,
+            workspaceId,
           });
-        } catch (ghErr: any) {
-          // Show GitHub-specific error but don't fail the whole flow
-          const ghError = ghErr.response?.data?.error || "GitHub repo creation failed";
-          setError(ghError);
-          // Workspace was still created, so let it succeed after showing error briefly
+        } catch {
+          // GitHub repo creation failed but workspace was created; continue
         }
       }
 
-      setCreated(true);
+      // Step 3: Open SSE stream for workspace provisioning
+      const setupUrl = workspaceAPI.setupStreamUrl(workspaceId);
+      const eventSource = new EventSource(setupUrl, {
+        withCredentials: true,
+      });
 
-      // Wait a beat so the success state is visible
-      setTimeout(() => {
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+
+          switch (payload.type) {
+            case "log":
+              setLogs((prev) => [...prev, payload.message]);
+              break;
+
+            case "complete":
+              eventSource.close();
+              setCreated(true);
+              onCreated?.();
+              // Auto-redirect to the workspace IDE
+              setTimeout(() => {
+                navigate(`/workspace/${workspaceId}`);
+              }, 1500);
+              break;
+
+            case "error":
+              eventSource.close();
+              setLogs((prev) => [...prev, `Error: ${payload.message}`]);
+              setError(payload.message);
+              setCreating(false);
+              break;
+          }
+        } catch {
+          // parse error; ignore
+        }
+      };
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        // If we didn't get an explicit error, the provisioning may have
+        // finished or the connection dropped. Navigate to workspace.
+        setCreated(true);
         onCreated?.();
-        onClose();
-      }, 1200);
+        setTimeout(() => {
+          navigate(`/workspace/${workspaceId}`);
+        }, 1000);
+      };
     } catch (err: any) {
-      const msg = err.response?.data?.error || "Failed to create workspace. Please try again.";
+      const msg =
+        err.response?.data?.error ||
+        "Failed to create workspace. Please try again.";
       setError(msg);
       setStep("config");
       setCreating(false);
@@ -692,7 +757,7 @@ export function CreateWorkspaceModal({
                 </motion.div>
               )}
 
-              {/* ─── Step 3: Creating / Success ─── */}
+              {/* ─── Step 3: Creating / Provisioning logs ─── */}
               {step === "creating" && (
                 <motion.div
                   key="creating"
@@ -700,88 +765,93 @@ export function CreateWorkspaceModal({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
-                  className="flex flex-col items-center justify-center px-6 py-16"
+                  className="flex flex-col px-6 py-5"
                 >
-                  <AnimatePresence mode="wait">
-                    {!created ? (
-                      <motion.div
-                        key="spinner"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        className="flex flex-col items-center gap-4"
+                  {/* Status header */}
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="relative">
+                      {!created ? (
+                        <div className="h-9 w-9 animate-spin rounded-full border-2 border-transparent border-t-green-500" />
+                      ) : (
+                        <motion.div
+                          initial={{ scale: 0.5, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-green-500/10"
+                        >
+                          <Check className="h-4.5 w-4.5 text-green-500" />
+                        </motion.div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold tracking-tight">
+                        {created
+                          ? "Setup Complete!"
+                          : `Setting up ${workspaceName}...`}
+                      </p>
+                      <p
+                        className={`text-[11px] ${
+                          isDark ? "text-zinc-500" : "text-zinc-400"
+                        }`}
                       >
-                        {/* Animated spinner ring */}
-                        <div className="relative">
-                          <div className="h-12 w-12 animate-spin rounded-full border-2 border-transparent border-t-green-500" />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div
-                              className={`h-8 w-8 rounded-full ${selectedTemplate?.accent}`}
-                            >
-                              <div className="flex h-full w-full items-center justify-center">
-                                <span className={selectedTemplate?.accentText}>
-                                  {selectedTemplate?.icon}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm font-semibold">
-                            Setting up {workspaceName}
-                          </p>
-                          <p
-                            className={`mt-1 text-[11px] ${isDark ? "text-zinc-500" : "text-zinc-400"}`}
-                          >
-                            {createGithubRepo
-                              ? "Creating workspace and GitHub repository..."
-                              : "Creating your workspace..."}
-                          </p>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="success"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{
-                          type: "spring",
-                          stiffness: 300,
-                          damping: 20,
-                        }}
-                        className="flex flex-col items-center gap-4"
+                        {created
+                          ? "Redirecting to workspace..."
+                          : selectedTemplate?.name}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Terminal-like log output */}
+                  <div
+                    ref={logsContainerRef}
+                    className={`h-64 overflow-y-auto rounded-xl border p-4 font-mono text-[11px] leading-relaxed ${
+                      isDark
+                        ? "border-white/6 bg-black/60 text-zinc-400"
+                        : "border-black/10 bg-zinc-950 text-zinc-400"
+                    }`}
+                  >
+                    {logs.map((line, i) => (
+                      <div
+                        key={i}
+                        className={
+                          line.startsWith("$")
+                            ? "text-green-400/80 mt-1"
+                            : line.startsWith("Error")
+                              ? "text-red-400/80"
+                              : line.startsWith("  Created")
+                                ? "text-blue-400/60"
+                                : ""
+                        }
                       >
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-green-500/10">
-                          <Check className="h-7 w-7 text-green-500" />
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm font-semibold">
-                            Workspace Created!
-                          </p>
-                          <p
-                            className={`mt-1 text-[11px] ${isDark ? "text-zinc-500" : "text-zinc-400"}`}
-                          >
-                            {workspaceName} is ready to go
-                          </p>
-                        </div>
-                        {createGithubRepo && hasGitHubConnected && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.2 }}
-                            className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[10px] ${
-                              isDark
-                                ? "border-white/6 text-zinc-500"
-                                : "border-black/6 text-zinc-400"
-                            }`}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            GitHub repo linked
-                          </motion.div>
-                        )}
-                      </motion.div>
+                        {line}
+                      </div>
+                    ))}
+                    {!created && (
+                      <span className="inline-block animate-pulse text-green-500/50">
+                        ▌
+                      </span>
                     )}
-                  </AnimatePresence>
+                  </div>
+
+                  {/* Error retry */}
+                  {error && !created && (
+                    <div className="mt-4 flex items-center justify-end gap-3">
+                      <button
+                        onClick={() => {
+                          setStep("config");
+                          setCreating(false);
+                          setError(null);
+                        }}
+                        className={`h-9 rounded-xl border px-4 text-xs font-medium transition-all duration-200 ${
+                          isDark
+                            ? "border-white/6 text-zinc-400 hover:bg-white/5 hover:text-white"
+                            : "border-black/6 text-zinc-500 hover:bg-black/5 hover:text-black"
+                        }`}
+                      >
+                        Go Back
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

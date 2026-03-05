@@ -14,8 +14,12 @@ import {
   workspaceExists,
 } from "../lib/workspace";
 import { TEMPLATE_META, type TemplateId } from "../lib/templates";
+import { provisionWorkspace } from "../lib/provisioner";
 
 const router = Router();
+
+// Track workspaces currently being provisioned (prevents double-setup)
+const provisioningWorkspaces = new Set<string>();
 
 // ── Helper: verify workspace ownership ──────────────────
 async function verifyOwnership(workspaceId: string, userId: string) {
@@ -40,10 +44,12 @@ router.get(
         return;
       }
 
-      // Ensure files exist on disk
-      const exists = await workspaceExists(workspace.id);
-      if (!exists) {
-        await initWorkspaceFiles(workspace.id, workspace.template || "blank");
+      // Only lazy-init for active workspaces (provisioning handled via /setup)
+      if (workspace.status === "active") {
+        const exists = await workspaceExists(workspace.id);
+        if (!exists) {
+          await initWorkspaceFiles(workspace.id, workspace.template || "blank");
+        }
       }
 
       const templateMeta =
@@ -79,15 +85,125 @@ router.post(
         return;
       }
 
-      const exists = await workspaceExists(workspace.id);
-      if (!exists) {
-        await initWorkspaceFiles(workspace.id, workspace.template || "blank");
+      if (workspace.status === "active") {
+        const exists = await workspaceExists(workspace.id);
+        if (!exists) {
+          await initWorkspaceFiles(workspace.id, workspace.template || "blank");
+        }
       }
 
       res.json({ message: "Workspace initialized" });
     } catch (error) {
       console.error("Init workspace error:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// ── SSE: Provision workspace with log streaming ─────────
+router.get(
+  "/:workspaceId/setup",
+  authenticate,
+  async (req: Request, res: Response) => {
+    // SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const workspaceId = req.params.workspaceId as string;
+
+    const workspace = await verifyOwnership(workspaceId, req.user!.userId);
+    if (!workspace) {
+      res.write(
+        `data: ${JSON.stringify({ type: "error", message: "Workspace not found" })}\n\n`
+      );
+      res.end();
+      return;
+    }
+
+    // If already active with files on disk, short-circuit
+    if (workspace.status === "active") {
+      const exists = await workspaceExists(workspace.id);
+      if (exists) {
+        res.write(
+          `data: ${JSON.stringify({ type: "log", message: "Workspace already initialized." })}\n\n`
+        );
+        res.write(
+          `data: ${JSON.stringify({ type: "complete", workspaceId: workspace.id })}\n\n`
+        );
+        res.end();
+        return;
+      }
+    }
+
+    // Prevent double-provisioning
+    if (provisioningWorkspaces.has(workspace.id)) {
+      res.write(
+        `data: ${JSON.stringify({ type: "log", message: "Workspace setup already in progress..." })}\n\n`
+      );
+      // Poll until the other run finishes
+      const interval = setInterval(async () => {
+        if (!provisioningWorkspaces.has(workspace.id)) {
+          clearInterval(interval);
+          res.write(
+            `data: ${JSON.stringify({ type: "complete", workspaceId: workspace.id })}\n\n`
+          );
+          res.end();
+        }
+      }, 1000);
+
+      req.on("close", () => clearInterval(interval));
+      return;
+    }
+
+    provisioningWorkspaces.add(workspace.id);
+
+    const log = (message: string) => {
+      try {
+        res.write(`data: ${JSON.stringify({ type: "log", message })}\n\n`);
+      } catch {
+        // connection closed
+      }
+    };
+
+    try {
+      await provisionWorkspace(
+        workspace.id,
+        workspace.template || "blank",
+        log,
+        workspace.repoUrl
+          ? {
+              repoUrl: workspace.repoUrl,
+              repoName: workspace.repoName || undefined,
+            }
+          : undefined
+      );
+
+      // Mark workspace as active
+      await prisma.workspace.update({
+        where: { id: workspace.id },
+        data: { status: "active" },
+      });
+
+      res.write(
+        `data: ${JSON.stringify({ type: "complete", workspaceId: workspace.id })}\n\n`
+      );
+    } catch (error: any) {
+      console.error("Provision error:", error);
+
+      await prisma.workspace.update({
+        where: { id: workspace.id },
+        data: { status: "failed" },
+      });
+
+      res.write(
+        `data: ${JSON.stringify({ type: "error", message: error.message || "Setup failed" })}\n\n`
+      );
+    } finally {
+      provisioningWorkspaces.delete(workspace.id);
+      res.end();
     }
   }
 );
