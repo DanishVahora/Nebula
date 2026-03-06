@@ -25,13 +25,13 @@ export function IDEToolbar({
   onToggleTerminal,
 }: IDEToolbarProps) {
   return (
-    <div className="h-10 flex items-center px-2 bg-[#f6f8fa] border-b border-[#d0d7de] gap-1 shrink-0"
+    <div className="h-10 flex items-center px-2 bg-[#181818] border-b border-[#2d2d2d] gap-1 shrink-0"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       {/* Back button */}
       <button
         onClick={onBack}
-        className="flex items-center gap-1 px-1.5 py-1 text-[#656d76] hover:text-[#1f2328] hover:bg-[#eaeef2] rounded transition-colors"
+        className="flex items-center gap-1 px-1.5 py-1 text-[#858585] hover:text-[#d4d4d4] hover:bg-[#2d2d2d] rounded transition-colors"
         title="Back to dashboard"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
@@ -40,11 +40,11 @@ export function IDEToolbar({
 
       {/* Workspace title */}
       <div className="flex items-center gap-2 px-2">
-        <span className="text-[13px] font-semibold text-[#1f2328] truncate max-w-[200px]">
+        <span className="text-[13px] font-semibold text-[#d4d4d4] truncate max-w-[200px]">
           {workspace.name}
         </span>
         {workspace.template && (
-          <span className="text-[10px] font-medium px-1.5 py-0.5 bg-[#e8e8e8] text-[#656d76] rounded">
+          <span className="text-[10px] font-medium px-1.5 py-0.5 bg-[#2d2d2d] text-[#858585] rounded">
             {workspace.template}
           </span>
         )}
@@ -59,7 +59,7 @@ export function IDEToolbar({
         <button
           onClick={onToggleTerminal}
           className={`p-1.5 rounded transition-colors ${
-            showTerminal ? "text-[#1f2328] bg-[#e8e8e8]" : "text-[#656d76] hover:text-[#1f2328] hover:bg-[#eaeef2]"
+            showTerminal ? "text-[#d4d4d4] bg-[#2d2d2d]" : "text-[#858585] hover:text-[#d4d4d4] hover:bg-[#2d2d2d]"
           }`}
           title="Toggle Terminal (Ctrl+`)"
         >
@@ -71,7 +71,7 @@ export function IDEToolbar({
           <button
             onClick={onTogglePreview}
             className={`p-1.5 rounded transition-colors ${
-              showPreview ? "text-[#1f2328] bg-[#e8e8e8]" : "text-[#656d76] hover:text-[#1f2328] hover:bg-[#eaeef2]"
+              showPreview ? "text-[#d4d4d4] bg-[#2d2d2d]" : "text-[#858585] hover:text-[#d4d4d4] hover:bg-[#2d2d2d]"
             }`}
             title={showPreview ? "Hide preview" : "Show preview"}
           >

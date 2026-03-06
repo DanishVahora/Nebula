@@ -23,6 +23,11 @@ export function getWorkspacePath(workspaceId: string): string {
   return path.join(getWorkspaceRoot(workspaceId), "project");
 }
 
+/** Return WORKSPACES_ROOT so other modules can inspect it */
+export function getWorkspacesRoot(): string {
+  return WORKSPACES_ROOT;
+}
+
 // ── Initialize workspace on disk ────────────────────────
 export async function initWorkspaceFiles(
   workspaceId: string,

@@ -1,13 +1,13 @@
 import { Router, Request, Response } from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage } from "http";
-import cookie from "cookie";
+import * as cookie from "cookie";
 import { Server } from "http";
 import { authenticate } from "../middleware/auth";
 import prisma from "../lib/prisma";
 import { getWorkspacePath, workspaceExists } from "../lib/workspace";
 import { terminalManager } from "../lib/terminal-manager";
-import { verifyToken } from "../lib/jwt";
+import { verifyToken, signToken } from "../lib/jwt";
 
 const router = Router();
 
@@ -37,9 +37,18 @@ router.post(
       const cwd = getWorkspacePath(workspace.id);
       const session = terminalManager.create(workspace.id, cwd);
 
+      // Generate a short-lived token the client can pass as a query-param
+      // when opening the WebSocket (avoids cross-origin cookie issues).
+      const wsToken = signToken({
+        userId: req.user!.userId,
+        email: (req as any).user.email ?? "",
+        role: (req as any).user.role ?? "user",
+      });
+
       res.json({
         terminalId: session.id,
         workspaceId: workspace.id,
+        wsToken,
       });
     } catch (error) {
       console.error("Create terminal error:", error);
@@ -166,10 +175,15 @@ export function attachTerminalWebSocket(server: Server) {
 
     const [, workspaceId, terminalId] = match;
 
-    // ── Authenticate via cookie ─────────────────────
+    // ── Authenticate via cookie OR query-param token ─
     try {
+      // Try query-param token first (handles cross-origin WS from dev server)
+      const urlObj = new URL(url, `http://${request.headers.host}`);
+      const queryToken = urlObj.searchParams.get("token");
+
+      // Fall back to cookie
       const cookies = cookie.parse(request.headers.cookie || "");
-      const token = cookies.token;
+      const token = queryToken || cookies.token;
       if (!token) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
@@ -201,6 +215,7 @@ export function attachTerminalWebSocket(server: Server) {
         wss.emit("connection", ws, request, session);
       });
     } catch (err) {
+      console.error("[WS] Error during upgrade:", err);
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
     }

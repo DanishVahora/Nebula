@@ -311,10 +311,10 @@ export default function WorkspaceIDE() {
   // ── Loading state ───────────────────────────────────────
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-white">
+      <div className="h-screen flex items-center justify-center bg-[#1e1e1e]">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-[#0969da]" />
-          <p className="text-sm text-[#656d76]">Loading workspace...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-[#007acc]" />
+          <p className="text-sm text-[#858585]">Loading workspace...</p>
         </div>
       </div>
     );
@@ -322,14 +322,14 @@ export default function WorkspaceIDE() {
 
   if (error || !workspace) {
     return (
-      <div className="h-screen flex items-center justify-center bg-white">
+      <div className="h-screen flex items-center justify-center bg-[#1e1e1e]">
         <div className="flex flex-col items-center gap-3 max-w-md text-center">
-          <AlertCircle className="w-10 h-10 text-[#cf222e]" />
-          <h2 className="text-lg font-semibold text-[#1f2328]">Workspace Error</h2>
-          <p className="text-sm text-[#656d76]">{error || "Workspace not found"}</p>
+          <AlertCircle className="w-10 h-10 text-[#f44747]" />
+          <h2 className="text-lg font-semibold text-[#d4d4d4]">Workspace Error</h2>
+          <p className="text-sm text-[#858585]">{error || "Workspace not found"}</p>
           <button
             onClick={() => navigate("/dashboard")}
-            className="mt-2 px-4 py-2 text-sm bg-[#0969da] text-white rounded hover:bg-[#0860c7] transition-colors"
+            className="mt-2 px-4 py-2 text-sm bg-[#007acc] text-white rounded hover:bg-[#1177bb] transition-colors"
           >
             Back to Dashboard
           </button>
@@ -352,7 +352,7 @@ export default function WorkspaceIDE() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-white overflow-hidden select-none">
+    <div className="h-screen flex flex-col bg-[#1e1e1e] overflow-hidden select-none">
       {/* ── Title Bar / Toolbar ──────────────────────── */}
       <IDEToolbar
         workspace={workspace}
@@ -367,7 +367,7 @@ export default function WorkspaceIDE() {
       {/* ── Main Content ─────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden">
         {/* ── Activity Bar (icon rail) ───────────────── */}
-        <div className="w-12 shrink-0 bg-[#24292f] flex flex-col items-center py-1 border-r border-[#1b1f23]">
+        <div className="w-12 shrink-0 bg-[#181818] flex flex-col items-center py-1 border-r border-[#0f0f0f]">
           <ActivityBarButton
             icon={<Files className="w-[22px] h-[22px]" />}
             active={activeSidebarPanel === "files" && showSidebar}
@@ -385,7 +385,7 @@ export default function WorkspaceIDE() {
               <div className="relative">
                 <GitBranch className="w-[22px] h-[22px]" />
                 {changedFilesCount > 0 && (
-                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#0969da] text-white text-[10px] font-bold flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#007acc] text-white text-[10px] font-bold flex items-center justify-center">
                     {changedFilesCount}
                   </span>
                 )}
@@ -408,7 +408,7 @@ export default function WorkspaceIDE() {
 
         {/* ── Sidebar Panel ──────────────────────────── */}
         {showSidebar && (
-          <div className="w-64 shrink-0 bg-[#f6f8fa] border-r border-[#d0d7de] overflow-hidden flex flex-col">
+          <div className="w-64 shrink-0 bg-[#181818] border-r border-[#2d2d2d] overflow-hidden flex flex-col">
             {activeSidebarPanel === "files" && (
               <FileExplorer
                 files={fileTree}
@@ -435,7 +435,7 @@ export default function WorkspaceIDE() {
             {activeSidebarPanel === "search" && (
               <div className="flex flex-col h-full">
                 <div className="px-4 py-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#656d76]">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#858585]">
                     Search
                   </span>
                 </div>
@@ -443,11 +443,11 @@ export default function WorkspaceIDE() {
                   <input
                     type="text"
                     placeholder="Search files..."
-                    className="w-full px-2.5 py-1.5 text-[13px] bg-white border border-[#d0d7de] rounded text-[#1f2328] outline-none focus:border-[#0969da] placeholder-[#8b949e]"
+                    className="w-full px-2.5 py-1.5 text-[13px] bg-[#2d2d2d] border border-[#3c3c3c] rounded text-[#d4d4d4] outline-none focus:border-[#007acc] placeholder-[#6e7681]"
                   />
                 </div>
                 <div className="flex-1 flex items-center justify-center px-4">
-                  <p className="text-[12px] text-[#8b949e] text-center">
+                  <p className="text-[12px] text-[#6e7681] text-center">
                     Type to search across all workspace files
                   </p>
                 </div>
@@ -475,7 +475,7 @@ export default function WorkspaceIDE() {
 
             {/* Preview */}
             {showPreview && isWebTemplate && (
-              <div className="w-[40%] shrink-0 border-l border-[#d0d7de]">
+              <div className="w-[40%] shrink-0 border-l border-[#2d2d2d]">
                 <PreviewPanel workspace={workspace} />
               </div>
             )}
@@ -484,7 +484,7 @@ export default function WorkspaceIDE() {
           {/* Terminal resize handle */}
           {showTerminal && (
             <div
-              className="h-1 bg-[#e8e8e8] hover:bg-[#0969da] cursor-ns-resize transition-colors shrink-0"
+              className="h-1 bg-[#2d2d2d] hover:bg-[#007acc] cursor-ns-resize transition-colors shrink-0"
               onMouseDown={handleTerminalResizeStart}
             />
           )}
@@ -499,7 +499,7 @@ export default function WorkspaceIDE() {
       </div>
 
       {/* ── Status Bar ───────────────────────────────── */}
-      <div className="h-[22px] shrink-0 flex items-center justify-between px-2 bg-[#0969da] text-white text-[11px]">
+      <div className="h-[22px] shrink-0 flex items-center justify-between px-2 bg-[#007acc] text-white text-[11px]">
         <div className="flex items-center gap-3">
           {gitBranch && (
             <button

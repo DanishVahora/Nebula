@@ -30,20 +30,27 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const tabCounterRef = useRef(0);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  // Persistent wrapper div per terminal — survives tab switches
+  const wrappersRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Track which terminals have already been opened (open() should only be called once)
+  const mountedRef = useRef<Set<string>>(new Set());
   // Keep a ref to the latest tabs so callbacks can read them
   const tabsRef = useRef<TerminalTab[]>([]);
   tabsRef.current = tabs;
   const activeTabIdRef = useRef<string | null>(null);
   activeTabIdRef.current = activeTabId;
 
-  // Compute WS base URL from API_BASE (http→ws, https→wss)
+  // Derive the WebSocket URL directly from API_BASE (e.g. http://localhost:5000)
+  // so we connect straight to the backend server, avoiding unreliable Vite
+  // dev-server WebSocket proxying.  Works in production too since API_BASE
+  // can be overridden via VITE_API_URL.
   const wsBaseUrl = API_BASE.replace(/^http/, "ws");
 
   // ── Create a new terminal session ─────────────────────
   const createTerminal = useCallback(async () => {
     try {
       const res = await workspaceAPI.createTerminal(workspaceId);
-      const { terminalId } = res.data;
+      const { terminalId, wsToken } = res.data;
       tabCounterRef.current += 1;
 
       const term = new Terminal({
@@ -53,7 +60,7 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
         lineHeight: 1.35,
         theme: {
-          background: "#1e1e1e",
+          background: "#0f0f0f",
           foreground: "#d4d4d4",
           cursor: "#aeafad",
           selectionBackground: "#264f78",
@@ -84,8 +91,9 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
       term.loadAddon(fitAddon);
       term.loadAddon(webLinksAddon);
 
-      // Connect WebSocket
-      const wsUrl = `${wsBaseUrl}/ws/terminal/${workspaceId}/${terminalId}`;
+      // Connect WebSocket — append the short-lived token so the backend
+      // can authenticate even when cookies aren't sent cross-origin.
+      const wsUrl = `${wsBaseUrl}/ws/terminal/${workspaceId}/${terminalId}?token=${encodeURIComponent(wsToken)}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
@@ -142,6 +150,11 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
       if (tab) {
         tab.ws?.close();
         tab.terminal.dispose();
+        // Remove the persistent wrapper div
+        const wrapper = wrappersRef.current.get(terminalId);
+        wrapper?.remove();
+        wrappersRef.current.delete(terminalId);
+        mountedRef.current.delete(terminalId);
         try {
           await workspaceAPI.killTerminal(workspaceId, terminalId);
         } catch {
@@ -161,39 +174,57 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
   );
 
   // ── Mount/unmount terminal into DOM when active tab changes ──
+  // Each terminal gets its own persistent wrapper div so switching tabs
+  // never destroys the terminal DOM (no re-open, no lost scrollback).
   useEffect(() => {
     const container = terminalContainerRef.current;
     if (!container) return;
 
-    // Remove existing children
-    while (container.firstChild) {
-      container.removeChild(container.firstChild);
-    }
-
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    if (!activeTab) return;
-
-    activeTab.terminal.open(container);
-
-    // Fit after a microtask so the DOM dimensions are ready
-    requestAnimationFrame(() => {
-      try {
-        activeTab.fitAddon.fit();
-        // Notify backend of the fitted size
-        if (activeTab.ws?.readyState === WebSocket.OPEN) {
-          activeTab.ws.send(
-            JSON.stringify({
-              type: "resize",
-              cols: activeTab.terminal.cols,
-              rows: activeTab.terminal.rows,
-            })
-          );
-        }
-      } catch {
-        // Ignore
+    // 1. Ensure every tab has a wrapper div; open() only the first time
+    tabs.forEach((tab) => {
+      if (!wrappersRef.current.has(tab.id)) {
+        const wrapper = document.createElement("div");
+        wrapper.dataset.terminalId = tab.id;
+        wrapper.style.width = "100%";
+        wrapper.style.height = "100%";
+        wrapper.style.display = "none";
+        container.appendChild(wrapper);
+        wrappersRef.current.set(tab.id, wrapper);
       }
-      activeTab.terminal.focus();
+
+      if (!mountedRef.current.has(tab.id)) {
+        const wrapper = wrappersRef.current.get(tab.id)!;
+        tab.terminal.open(wrapper);
+        mountedRef.current.add(tab.id);
+      }
     });
+
+    // 2. Show only the active terminal, hide the rest
+    wrappersRef.current.forEach((wrapper, id) => {
+      wrapper.style.display = id === activeTabId ? "" : "none";
+    });
+
+    // 3. Fit + focus the active terminal after the DOM settles
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (activeTab) {
+      requestAnimationFrame(() => {
+        try {
+          activeTab.fitAddon.fit();
+          if (activeTab.ws?.readyState === WebSocket.OPEN) {
+            activeTab.ws.send(
+              JSON.stringify({
+                type: "resize",
+                cols: activeTab.terminal.cols,
+                rows: activeTab.terminal.rows,
+              })
+            );
+          }
+        } catch {
+          // Ignore
+        }
+        activeTab.terminal.focus();
+      });
+    }
   }, [activeTabId, tabs]);
 
   // ── Resize observer for the container ─────────────────
@@ -237,23 +268,26 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
         tab.ws?.close();
         tab.terminal.dispose();
       });
+      wrappersRef.current.forEach((wrapper) => wrapper.remove());
+      wrappersRef.current.clear();
+      mountedRef.current.clear();
     };
   }, []);
 
   return (
-    <div className="h-full flex flex-col bg-[#1e1e1e] font-mono text-[13px] relative">
+    <div className="h-full flex flex-col bg-[#0f0f0f] font-mono text-[13px] relative">
       {/* ── Tab bar ──────────────────────────────────── */}
-      <div className="flex items-center justify-between bg-[#252526] shrink-0 border-b border-[#1e1e1e]">
+      <div className="flex items-center justify-between bg-[#181818] shrink-0 border-b border-[#0f0f0f]">
         <div className="flex items-center overflow-x-auto" style={{ scrollbarWidth: "thin" }}>
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             return (
               <div
                 key={tab.id}
-                className={`group flex items-center gap-1.5 px-3 py-1.5 cursor-pointer border-r border-[#1e1e1e] min-w-0 max-w-[160px] transition-colors ${
+                className={`group flex items-center gap-1.5 px-3 py-1.5 cursor-pointer border-r border-[#0f0f0f] min-w-0 max-w-[160px] transition-colors ${
                   isActive
-                    ? "bg-[#1e1e1e] text-[#d4d4d4] border-t-2 border-t-[#007acc]"
-                    : "bg-[#2d2d2d] text-[#858585] hover:bg-[#2d2d2d]/80 border-t-2 border-t-transparent"
+                    ? "bg-[#0f0f0f] text-[#d4d4d4] border-t-2 border-t-[#007acc]"
+                    : "bg-[#1e1e1e] text-[#858585] hover:bg-[#1e1e1e]/80 border-t-2 border-t-transparent"
                 }`}
                 onClick={() => setActiveTabId(tab.id)}
               >

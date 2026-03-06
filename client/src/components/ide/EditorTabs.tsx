@@ -41,34 +41,34 @@ export function EditorTabs({
   );
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-[#1e1e1e]">
       {/* Tab bar */}
       {tabs.length > 0 && (
-        <div className="flex items-center bg-[#f6f8fa] border-b border-[#d0d7de] overflow-x-auto shrink-0"
-          style={{ scrollbarWidth: "thin", scrollbarColor: "#d0d7de #f6f8fa" }}
+        <div className="flex items-center bg-[#252526] border-b border-[#1e1e1e] overflow-x-auto shrink-0"
+          style={{ scrollbarWidth: "thin", scrollbarColor: "#3c3c3c #252526" }}
         >
           {tabs.map((tab) => {
             const isActive = tab.path === activeTab;
             return (
               <div
                 key={tab.path}
-                className={`group relative flex items-center gap-1.5 px-3 h-[36px] cursor-pointer border-r border-[#e8e8e8] min-w-0 max-w-[180px] transition-colors ${
+                className={`group relative flex items-center gap-1.5 px-3 h-[36px] cursor-pointer border-r border-[#1e1e1e] min-w-0 max-w-[180px] transition-colors ${
                   isActive
-                    ? "bg-white text-[#1f2328]"
-                    : "bg-[#f0f0f0] text-[#656d76] hover:bg-[#eaeef2]"
+                    ? "bg-[#1e1e1e] text-[#d4d4d4]"
+                    : "bg-[#2d2d2d] text-[#858585] hover:bg-[#2d2d2d]/80"
                 }`}
                 onClick={() => onTabClick(tab.path)}
               >
                 {isActive && (
-                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#0969da]" />
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#007acc]" />
                 )}
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getFileIconColor(tab.name) }} />
                 <span className="text-[13px] truncate">{tab.name}</span>
                 {tab.isDirty && (
-                  <Circle className="w-2 h-2 fill-current text-[#656d76] shrink-0" />
+                  <Circle className="w-2 h-2 fill-current text-[#858585] shrink-0" />
                 )}
                 <button
-                  className="ml-auto p-0.5 hover:bg-[#d0d7de] rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  className="ml-auto p-0.5 hover:bg-[#3c3c3c] rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                   onClick={(e) => { e.stopPropagation(); onTabClose(tab.path); }}
                 >
                   <X className="w-3 h-3" />
@@ -89,7 +89,7 @@ export function EditorTabs({
             value={activeFileTab.content}
             onChange={handleEditorChange}
             onMount={handleEditorMount}
-            theme="vs"
+            theme="vs-dark"
             options={{
               fontSize: 14,
               fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
@@ -117,18 +117,18 @@ export function EditorTabs({
             }}
           />
         ) : (
-          <div className="h-full flex items-center justify-center bg-white">
+          <div className="h-full flex items-center justify-center bg-[#1e1e1e]">
             <div className="text-center max-w-sm">
-              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-[#f6f8fa] border border-[#e8e8e8] flex items-center justify-center">
-                <svg className="w-10 h-10 text-[#c9d1d9]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-[#252526] border border-[#3c3c3c] flex items-center justify-center">
+                <svg className="w-10 h-10 text-[#858585]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
                 </svg>
               </div>
-              <p className="text-[15px] font-semibold text-[#1f2328] mb-1">Nebula IDE</p>
-              <p className="text-[13px] text-[#656d76] mb-4">Open a file from the explorer to start editing</p>
-              <div className="space-y-1.5 text-[12px] text-[#8b949e]">
-                <p><kbd className="px-1.5 py-0.5 bg-[#f6f8fa] border border-[#d0d7de] rounded text-[#656d76] text-[11px]">Ctrl+S</kbd> Save file</p>
-                <p><kbd className="px-1.5 py-0.5 bg-[#f6f8fa] border border-[#d0d7de] rounded text-[#656d76] text-[11px]">Ctrl+`</kbd> Toggle terminal</p>
+              <p className="text-[15px] font-semibold text-[#d4d4d4] mb-1">Nebula IDE</p>
+              <p className="text-[13px] text-[#858585] mb-4">Open a file from the explorer to start editing</p>
+              <div className="space-y-1.5 text-[12px] text-[#6e7681]">
+                <p><kbd className="px-1.5 py-0.5 bg-[#2d2d2d] border border-[#3c3c3c] rounded text-[#858585] text-[11px]">Ctrl+S</kbd> Save file</p>
+                <p><kbd className="px-1.5 py-0.5 bg-[#2d2d2d] border border-[#3c3c3c] rounded text-[#858585] text-[11px]">Ctrl+`</kbd> Toggle terminal</p>
               </div>
             </div>
           </div>
