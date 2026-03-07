@@ -1,12 +1,19 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { workspaceAPI } from "@/lib/api";
 import { IDEToolbar } from "@/components/ide/IDEToolbar";
 import { FileExplorer } from "@/components/ide/FileExplorer";
 import { EditorTabs } from "@/components/ide/EditorTabs";
+import { DiffViewer } from "@/components/ide/DiffViewer";
 import { TerminalPanel } from "@/components/ide/TerminalPanel";
 import { PreviewPanel } from "@/components/ide/PreviewPanel";
 import { GitPanel } from "@/components/ide/GitPanel";
+import { PortsPanel } from "@/components/ide/PortsPanel";
+import { QuickOpen } from "@/components/ide/QuickOpen";
+import {
+  CommandPalette,
+  type PaletteCommand,
+} from "@/components/ide/CommandPalette";
 import {
   Loader2,
   AlertCircle,
@@ -15,6 +22,18 @@ import {
   Search,
   Settings,
   Terminal,
+  Globe,
+  Network,
+  FilePlus,
+  FolderPlus,
+  Play,
+  RotateCcw,
+  Package,
+  GitCommit,
+  Upload,
+  Download,
+  Save,
+  Eye,
 } from "lucide-react";
 
 export interface FileTab {
@@ -45,7 +64,7 @@ function getLanguageFromPath(filePath: string): string {
   return map[ext] || "plaintext";
 }
 
-type SidebarPanel = "files" | "git" | "search";
+type SidebarPanel = "files" | "git" | "search" | "ports";
 
 export default function WorkspaceIDE() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -67,7 +86,15 @@ export default function WorkspaceIDE() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
+  const [previewPorts, setPreviewPorts] = useState<number[]>([]);
+  const [activePreviewPort, setActivePreviewPort] = useState<number | null>(null);
   const [terminalHeight, setTerminalHeight] = useState(220);
+
+  // Quick Open (Ctrl+P)
+  const [showQuickOpen, setShowQuickOpen] = useState(false);
+
+  // Command Palette (Ctrl+Shift+P)
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
 
 
 
@@ -75,11 +102,33 @@ export default function WorkspaceIDE() {
   const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [gitStatus, setGitStatus] = useState<any>(null);
 
+  // Diff viewer state
+  const [diffState, setDiffState] = useState<{
+    filePath: string;
+    original: string;
+    modified: string;
+    language: string;
+  } | null>(null);
+
   // Autosave timer
   const autosaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep a ref to tabs so save can always read the latest state
+  const tabsRef = useRef<FileTab[]>([]);
+  tabsRef.current = tabs;
 
   // Resizing terminal
   const isResizingRef = useRef(false);
+
+  // ── Handle dev-server port detection (from backend WS event) ────
+  const handlePortDetected = useCallback((port: number) => {
+    setPreviewPorts((prev) => {
+      if (prev.includes(port)) return prev;
+      return [...prev, port];
+    });
+    // Auto-select the first detected port and open the preview panel
+    setActivePreviewPort((current) => current ?? port);
+    setShowPreview(true);
+  }, []);
 
   // ── Load workspace ──────────────────────────────────────
   const loadWorkspace = useCallback(async () => {
@@ -89,6 +138,40 @@ export default function WorkspaceIDE() {
       const res = await workspaceAPI.getWorkspace(workspaceId);
       setWorkspace(res.data.workspace);
       setError(null);
+
+      // Restore full session state (terminals + ports + UI state)
+      try {
+        const sessionRes = await workspaceAPI.getSession(workspaceId);
+        const { ports, uiState } = sessionRes.data;
+
+        // Restore preview ports
+        if (ports.length > 0) {
+          setPreviewPorts(ports);
+          setActivePreviewPort(uiState?.activePreviewPort ?? ports[0]);
+          setShowPreview(uiState?.previewOpen ?? true);
+        }
+
+        // Restore UI state
+        if (uiState) {
+          setShowTerminal(uiState.showTerminal);
+          if (uiState.sidebarPanel) {
+            setActiveSidebarPanel(uiState.sidebarPanel as SidebarPanel);
+          }
+        }
+      } catch {
+        // Session API may not be available yet — fall back to ports
+        try {
+          const portsRes = await workspaceAPI.getActivePorts(workspaceId);
+          const ports = portsRes.data.ports;
+          if (ports.length > 0) {
+            setPreviewPorts(ports);
+            setActivePreviewPort(ports[0]);
+            setShowPreview(true);
+          }
+        } catch {
+          // Ports API may not be available yet
+        }
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to load workspace");
     } finally {
@@ -106,6 +189,16 @@ export default function WorkspaceIDE() {
       // Ignore
     }
   }, [workspaceId]);
+
+  // ── Debounced fs-change handler ─────────────────────────
+  const fsChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleFsChange = useCallback((_event: string, _path: string) => {
+    // Debounce: coalesce rapid filesystem events into a single tree refresh
+    if (fsChangeTimerRef.current) clearTimeout(fsChangeTimerRef.current);
+    fsChangeTimerRef.current = setTimeout(() => {
+      loadFileTree();
+    }, 300);
+  }, [loadFileTree]);
 
   // ── Load git status ─────────────────────────────────────
   const loadGitStatus = useCallback(async () => {
@@ -143,18 +236,45 @@ export default function WorkspaceIDE() {
     [workspaceId, tabs]
   );
 
+  // ── Open diff view for a git-changed file ──────────────
+  const openDiffView = useCallback(
+    async (filePath: string) => {
+      if (!workspaceId) return;
+      try {
+        const res = await workspaceAPI.gitDiff(workspaceId, filePath);
+        setDiffState({
+          filePath: res.data.filePath,
+          original: res.data.original,
+          modified: res.data.modified,
+          language: getLanguageFromPath(filePath),
+        });
+        // Clear active regular tab so the diff view takes over the editor area
+        setActiveTab(null);
+      } catch {
+        // If diff fetch fails, just open the file normally
+        openFile(filePath);
+      }
+    },
+    [workspaceId, openFile]
+  );
+
   // ── Save file ───────────────────────────────────────────
   const saveFile = useCallback(
     async (filePath: string) => {
       if (!workspaceId) return;
-      const tab = tabs.find((t) => t.path === filePath);
+      // Read from ref so we always get the latest tabs state,
+      // even when called from a stale setTimeout closure.
+      const currentTabs = tabsRef.current;
+      const tab = currentTabs.find((t) => t.path === filePath);
       if (!tab || !tab.isDirty) return;
       try {
         await workspaceAPI.writeFile(workspaceId, filePath, tab.content);
         setTabs((prev) => prev.map((t) => t.path === filePath ? { ...t, isDirty: false } : t));
-      } catch { /* Save failed */ }
+      } catch (err) {
+        console.error("[IDE] Save failed for", filePath, err);
+      }
     },
-    [workspaceId, tabs]
+    [workspaceId]
   );
 
   // ── Update file content ─────────────────────────────────
@@ -263,6 +383,22 @@ export default function WorkspaceIDE() {
     } catch { /* Init failed */ }
   }, [workspaceId, loadGitStatus]);
 
+  const gitStage = useCallback(async (files?: string[]) => {
+    if (!workspaceId) return;
+    try {
+      await workspaceAPI.gitStage(workspaceId, files);
+      loadGitStatus();
+    } catch { /* Stage failed */ }
+  }, [workspaceId, loadGitStatus]);
+
+  const gitUnstage = useCallback(async (files?: string[]) => {
+    if (!workspaceId) return;
+    try {
+      await workspaceAPI.gitUnstage(workspaceId, files);
+      loadGitStatus();
+    } catch { /* Unstage failed */ }
+  }, [workspaceId, loadGitStatus]);
+
   // ── Terminal resize ─────────────────────────────────────
   const handleTerminalResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -284,10 +420,33 @@ export default function WorkspaceIDE() {
     document.addEventListener("mouseup", onMouseUp);
   }, [terminalHeight]);
 
+  // ── Persist IDE UI state to server (debounced) ──────────
+  const uiStateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialLoadDoneRef = useRef(false);
 
+  useEffect(() => {
+    // Skip saving during the initial load to avoid overwriting server state
+    // with defaults before the session is restored.
+    if (!workspaceId || !initialLoadDoneRef.current) return;
+
+    if (uiStateSaveTimerRef.current) clearTimeout(uiStateSaveTimerRef.current);
+    uiStateSaveTimerRef.current = setTimeout(() => {
+      workspaceAPI.saveUIState(workspaceId, {
+        previewOpen: showPreview,
+        activePreviewPort: activePreviewPort,
+        showTerminal,
+        sidebarPanel: activeSidebarPanel,
+      }).catch(() => { /* ignore save failures */ });
+    }, 500);
+  }, [workspaceId, showPreview, activePreviewPort, showTerminal, activeSidebarPanel]);
 
   // ── Initial load ────────────────────────────────────────
-  useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
+  useEffect(() => {
+    loadWorkspace().then(() => {
+      // Enable UI state saving now that session restore is complete
+      initialLoadDoneRef.current = true;
+    });
+  }, [loadWorkspace]);
   useEffect(() => {
     if (workspace) { loadFileTree(); loadGitStatus(); }
   }, [workspace, loadFileTree, loadGitStatus]);
@@ -303,10 +462,190 @@ export default function WorkspaceIDE() {
         e.preventDefault();
         setShowTerminal((prev) => !prev);
       }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "P") {
+        e.preventDefault();
+        setShowCommandPalette(true);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
+        e.preventDefault();
+        setShowQuickOpen(true);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab, saveFile]);
+
+  // ── Derived state (must be above early returns) ─────────
+  const activeFileTab = diffState ? null : (tabs.find((t) => t.path === activeTab) || null);
+  const isWebTemplate = ["static", "react", "react-ts", "nextjs", "vite-react-ts", "vue", "angular"].includes(workspace?.template || "");
+  const canShowPreview = isWebTemplate || previewPorts.length > 0;
+  const changedFilesCount = (gitStatus?.modified?.length || 0) + (gitStatus?.untracked?.length || 0);
+
+  const toggleSidebarPanel = useCallback((panel: SidebarPanel) => {
+    setActiveSidebarPanel((prev) => {
+      if (prev === panel && showSidebar) {
+        setShowSidebar(false);
+        return prev;
+      }
+      setShowSidebar(true);
+      return panel;
+    });
+  }, [showSidebar]);
+
+  // ── Command palette commands ────────────────────────────
+  const paletteCommands: PaletteCommand[] = useMemo(
+    () => [
+      {
+        id: "create-file",
+        label: "Create File",
+        category: "File",
+        icon: FilePlus,
+        action: () => {
+          const name = prompt("Enter file name:");
+          if (name) createFileOrFolder("", name, "file");
+        },
+      },
+      {
+        id: "create-folder",
+        label: "Create Folder",
+        category: "File",
+        icon: FolderPlus,
+        action: () => {
+          const name = prompt("Enter folder name:");
+          if (name) createFileOrFolder("", name, "directory");
+        },
+      },
+      {
+        id: "save-file",
+        label: "Save Current File",
+        category: "File",
+        icon: Save,
+        shortcut: "Ctrl+S",
+        action: () => {
+          if (activeTab) saveFile(activeTab);
+        },
+      },
+      {
+        id: "search-file",
+        label: "Search File (Quick Open)",
+        category: "File",
+        icon: Search,
+        shortcut: "Ctrl+P",
+        action: () => setShowQuickOpen(true),
+      },
+      {
+        id: "open-terminal",
+        label: "Open Terminal",
+        category: "Terminal",
+        icon: Terminal,
+        shortcut: "Ctrl+`",
+        action: () => setShowTerminal(true),
+      },
+      {
+        id: "run-project",
+        label: "Run Project",
+        category: "Terminal",
+        icon: Play,
+        action: () => {
+          setShowTerminal(true);
+          if (workspaceId) {
+            workspaceAPI.run(workspaceId, "npm run dev").catch(() => {});
+          }
+        },
+      },
+      {
+        id: "restart-dev-server",
+        label: "Restart Dev Server",
+        category: "Terminal",
+        icon: RotateCcw,
+        action: () => {
+          setShowTerminal(true);
+          if (workspaceId) {
+            workspaceAPI.stop(workspaceId).catch(() => {});
+            setTimeout(() => {
+              workspaceAPI.run(workspaceId!, "npm run dev").catch(() => {});
+            }, 500);
+          }
+        },
+      },
+      {
+        id: "install-npm",
+        label: "Install npm Package",
+        category: "Terminal",
+        icon: Package,
+        action: () => {
+          const pkg = prompt("Enter package name to install:");
+          if (pkg && workspaceId) {
+            setShowTerminal(true);
+            workspaceAPI.exec(workspaceId, `npm install ${pkg}`).catch(() => {});
+          }
+        },
+      },
+      {
+        id: "git-commit",
+        label: "Git: Commit",
+        category: "Git",
+        icon: GitCommit,
+        action: () => {
+          const message = prompt("Enter commit message:");
+          if (message) gitCommit(message);
+        },
+      },
+      {
+        id: "git-push",
+        label: "Git: Push",
+        category: "Git",
+        icon: Upload,
+        action: () => gitPush(),
+      },
+      {
+        id: "git-pull",
+        label: "Git: Pull",
+        category: "Git",
+        icon: Download,
+        action: () => gitPull(),
+      },
+      {
+        id: "toggle-explorer",
+        label: "Toggle Explorer Panel",
+        category: "View",
+        icon: Files,
+        action: () => toggleSidebarPanel("files"),
+      },
+      {
+        id: "toggle-git-panel",
+        label: "Toggle Source Control Panel",
+        category: "View",
+        icon: GitBranch,
+        action: () => toggleSidebarPanel("git"),
+      },
+      {
+        id: "toggle-ports-panel",
+        label: "Toggle Ports Panel",
+        category: "View",
+        icon: Network,
+        action: () => toggleSidebarPanel("ports"),
+      },
+      {
+        id: "toggle-preview",
+        label: "Toggle Preview",
+        category: "View",
+        icon: Eye,
+        action: () => setShowPreview((p) => !p),
+      },
+      {
+        id: "toggle-terminal",
+        label: "Toggle Terminal",
+        category: "View",
+        icon: Terminal,
+        shortcut: "Ctrl+`",
+        action: () => setShowTerminal((p) => !p),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workspaceId, activeTab, saveFile, createFileOrFolder, gitCommit, gitPush, gitPull, toggleSidebarPanel]
+  );
 
   // ── Loading state ───────────────────────────────────────
   if (loading) {
@@ -338,28 +677,30 @@ export default function WorkspaceIDE() {
     );
   }
 
-  const activeFileTab = tabs.find((t) => t.path === activeTab) || null;
-  const isWebTemplate = ["static", "react", "react-ts", "nextjs", "vite-react-ts", "vue", "angular"].includes(workspace.template || "");
-  const changedFilesCount = (gitStatus?.modified?.length || 0) + (gitStatus?.untracked?.length || 0);
-
-  const toggleSidebarPanel = (panel: SidebarPanel) => {
-    if (activeSidebarPanel === panel && showSidebar) {
-      setShowSidebar(false);
-    } else {
-      setActiveSidebarPanel(panel);
-      setShowSidebar(true);
-    }
-  };
-
   return (
     <div className="h-screen flex flex-col bg-[#1e1e1e] overflow-hidden select-none">
+      {/* ── Quick Open Overlay ────────────────────── */}
+      <QuickOpen
+        workspaceId={workspaceId!}
+        isOpen={showQuickOpen}
+        onClose={() => setShowQuickOpen(false)}
+        onOpenFile={openFile}
+      />
+
+      {/* ── Command Palette ──────────────────────────── */}
+      <CommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        commands={paletteCommands}
+      />
+
       {/* ── Title Bar / Toolbar ──────────────────────── */}
       <IDEToolbar
         workspace={workspace}
         onBack={() => navigate("/dashboard")}
         showPreview={showPreview}
         onTogglePreview={() => setShowPreview(!showPreview)}
-        isWebTemplate={isWebTemplate}
+        isWebTemplate={canShowPreview}
         showTerminal={showTerminal}
         onToggleTerminal={() => setShowTerminal(!showTerminal)}
       />
@@ -379,6 +720,21 @@ export default function WorkspaceIDE() {
             active={activeSidebarPanel === "search" && showSidebar}
             onClick={() => toggleSidebarPanel("search")}
             title="Search"
+          />
+          <ActivityBarButton
+            icon={
+              <div className="relative">
+                <Network className="w-[22px] h-[22px]" />
+                {previewPorts.length > 0 && (
+                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4ec9b0] text-[#1e1e1e] text-[10px] font-bold flex items-center justify-center">
+                    {previewPorts.length}
+                  </span>
+                )}
+              </div>
+            }
+            active={activeSidebarPanel === "ports" && showSidebar}
+            onClick={() => toggleSidebarPanel("ports")}
+            title="Ports"
           />
           <ActivityBarButton
             icon={
@@ -420,6 +776,22 @@ export default function WorkspaceIDE() {
                 onRefresh={loadFileTree}
               />
             )}
+            {activeSidebarPanel === "ports" && (
+              <PortsPanel
+                workspaceId={workspaceId!}
+                ports={previewPorts}
+                onOpenPreview={(port) => {
+                  setActivePreviewPort(port);
+                  setShowPreview(true);
+                }}
+                onRefresh={async () => {
+                  try {
+                    const res = await workspaceAPI.getActivePorts(workspaceId!);
+                    setPreviewPorts(res.data.ports);
+                  } catch { /* ignore */ }
+                }}
+              />
+            )}
             {activeSidebarPanel === "git" && (
               <GitPanel
                 gitBranch={gitBranch}
@@ -430,6 +802,9 @@ export default function WorkspaceIDE() {
                 onPull={gitPull}
                 onGitInit={gitInitRepo}
                 onRefresh={loadGitStatus}
+                onStage={gitStage}
+                onUnstage={gitUnstage}
+                onFileClick={(file) => openDiffView(file)}
               />
             )}
             {activeSidebarPanel === "search" && (
@@ -462,21 +837,44 @@ export default function WorkspaceIDE() {
           <div className="flex-1 flex min-h-0">
             {/* Editor */}
             <div className="flex-1 flex flex-col min-w-0">
-              <EditorTabs
-                tabs={tabs}
-                activeTab={activeTab}
-                onTabClick={setActiveTab}
-                onTabClose={closeTab}
-                onContentChange={updateFileContent}
-                onSave={saveFile}
-                activeFileTab={activeFileTab}
-              />
+              {diffState ? (
+                <DiffViewer
+                  filePath={diffState.filePath}
+                  originalContent={diffState.original}
+                  modifiedContent={diffState.modified}
+                  language={diffState.language}
+                  onClose={() => {
+                    setDiffState(null);
+                    // Re-activate the last open tab if any
+                    if (tabs.length > 0) {
+                      setActiveTab(tabs[tabs.length - 1].path);
+                    }
+                  }}
+                />
+              ) : (
+                <EditorTabs
+                  tabs={tabs}
+                  activeTab={activeTab}
+                  onTabClick={(path) => { setDiffState(null); setActiveTab(path); }}
+                  onTabClose={closeTab}
+                  onContentChange={updateFileContent}
+                  onSave={saveFile}
+                  activeFileTab={activeFileTab}
+                />
+              )}
             </div>
 
             {/* Preview */}
-            {showPreview && isWebTemplate && (
+            {showPreview && (
               <div className="w-[40%] shrink-0 border-l border-[#2d2d2d]">
-                <PreviewPanel workspace={workspace} />
+                <PreviewPanel
+                  workspaceId={workspaceId!}
+                  port={activePreviewPort}
+                  ports={previewPorts}
+                  onPortSelect={setActivePreviewPort}
+                  workspace={workspace}
+                  onClose={() => setShowPreview(false)}
+                />
               </div>
             )}
           </div>
@@ -492,7 +890,11 @@ export default function WorkspaceIDE() {
           {/* Status bar above terminal or bottom bar */}
           {showTerminal && (
             <div style={{ height: terminalHeight }} className="shrink-0">
-              <TerminalPanel workspaceId={workspaceId!} />
+              <TerminalPanel
+                workspaceId={workspaceId!}
+                onPortDetected={handlePortDetected}
+                onFsChange={handleFsChange}
+              />
             </div>
           )}
         </div>
@@ -522,6 +924,17 @@ export default function WorkspaceIDE() {
             <span className="opacity-80">{activeFileTab.language}</span>
           )}
           <span className="opacity-80">UTF-8</span>
+          {previewPorts.length > 0 && (
+            <button
+              className="flex items-center gap-1 hover:bg-white/10 px-1.5 rounded transition-colors"
+              onClick={() => setShowPreview(!showPreview)}
+            >
+              <Globe className="w-3 h-3" />
+              {previewPorts.length === 1
+                ? `Port ${previewPorts[0]}`
+                : `${previewPorts.length} ports`}
+            </button>
+          )}
           <button
             className="flex items-center gap-1 hover:bg-white/10 px-1.5 rounded transition-colors"
             onClick={() => setShowTerminal(!showTerminal)}

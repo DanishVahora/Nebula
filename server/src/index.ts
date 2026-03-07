@@ -14,7 +14,9 @@ import workspaceRunRoutes from "./routes/workspace-run";
 import workspaceTerminalRoutes, {
   attachTerminalWebSocket,
 } from "./routes/workspace-terminal";
-import { terminalManager } from "./lib/terminal-manager";
+import previewRoutes from "./routes/preview";
+import { previewFallbackProxy } from "./middleware/preview-fallback";
+import { sessionManager } from "./lib/session-manager";
 
 const app = express();
 
@@ -32,6 +34,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// ── Preview fallback proxy ─────────────────────────────
+// Must be before API routes so root-relative requests from preview
+// iframes (e.g. /@vite/client) get proxied to the dev server.
+app.use(previewFallbackProxy);
+
 // ── Routes ─────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
 app.use("/api/github", githubRoutes);
@@ -40,6 +47,7 @@ app.use("/api/workspace", workspaceRoutes);
 app.use("/api/workspace-git", workspaceGitRoutes);
 app.use("/api/workspace-run", workspaceRunRoutes);
 app.use("/api/workspace", workspaceTerminalRoutes);
+app.use("/api/preview", previewRoutes);
 
 // ── Health check ───────────────────────────────────────
 app.get("/api/health", (_req, res) => {
@@ -61,7 +69,7 @@ server.listen(env.PORT, () => {
 });
 
 process.on("SIGTERM", () => {
-  terminalManager.disposeAll();
+  sessionManager.disposeAll();
   server.close();
 });
 

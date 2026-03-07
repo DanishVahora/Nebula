@@ -69,28 +69,24 @@ router.post(
       outputBuffers.set(workspace.id, []);
 
       // Determine command from custom input or template
-      let cmd: string;
-      let args: string[];
+      let fullCommand: string;
 
       if (req.body.command) {
-        const tokens = req.body.command.split(/\s+/);
-        cmd = tokens[0];
-        args = tokens.slice(1);
+        fullCommand = req.body.command;
       } else {
         const runCmd = getRunCommand((workspace as any).template);
         if (!runCmd) {
           res.status(400).json({ error: "No run command for this template" });
           return;
         }
-        cmd = runCmd.cmd;
-        args = runCmd.args;
+        fullCommand = `${runCmd.cmd} ${runCmd.args.join(" ")}`;
       }
 
       const wsPath = getWorkspacePath(workspace.id);
       const timestamp = new Date().toISOString();
-      appendOutput(workspace.id, `[${timestamp}] $ ${cmd} ${args.join(" ")}`);
+      appendOutput(workspace.id, `[${timestamp}] $ ${fullCommand}`);
 
-      const child = spawn(cmd, args, {
+      const child = spawn(fullCommand, {
         cwd: wsPath,
         shell: true,
         stdio: ["pipe", "pipe", "pipe"],
@@ -125,7 +121,7 @@ router.post(
 
       res.json({
         message: "Process started",
-        command: `${cmd} ${args.join(" ")}`,
+        command: fullCommand,
         pid: child.pid,
       });
     } catch (error) {
@@ -223,13 +219,11 @@ router.post(
       const wsPath = getWorkspacePath(workspace.id);
       appendOutput(workspace.id, `$ ${command}`);
 
-      const tokens = command.split(/\s+/);
-
       const output = await new Promise<string>((resolve, reject) => {
         let stdout = "";
         let stderr = "";
 
-        const child = spawn(tokens[0], tokens.slice(1), {
+        const child = spawn(command, {
           cwd: wsPath,
           shell: true,
           env: { ...process.env, FORCE_COLOR: "0" },

@@ -11,6 +11,8 @@ import {
   FilePlus2,
   FileX2,
   Check,
+  Plus,
+  Minus,
 } from "lucide-react";
 
 interface GitPanelProps {
@@ -22,6 +24,9 @@ interface GitPanelProps {
   onPull: () => Promise<void> | void;
   onGitInit: () => void;
   onRefresh: () => void;
+  onStage: (files?: string[]) => Promise<void> | void;
+  onUnstage: (files?: string[]) => Promise<void> | void;
+  onFileClick?: (filePath: string, status: "modified" | "untracked" | "deleted") => void;
 }
 
 export function GitPanel({
@@ -33,6 +38,9 @@ export function GitPanel({
   onPull,
   onGitInit,
   onRefresh,
+  onStage,
+  onUnstage,
+  onFileClick,
 }: GitPanelProps) {
   const [commitMessage, setCommitMessage] = useState("");
   const [isPushing, setIsPushing] = useState(false);
@@ -169,14 +177,30 @@ export function GitPanel({
             {/* Staged */}
             {stagedFiles.length > 0 && (
               <div>
-                <div className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold text-[#858585] uppercase tracking-wider">
-                  Staged Changes
-                  <span className="text-[10px] font-bold text-[#007acc]">{stagedFiles.length}</span>
+                <div className="flex items-center justify-between px-4 py-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#858585] uppercase tracking-wider">
+                    Staged Changes
+                    <span className="text-[10px] font-bold text-[#007acc]">{stagedFiles.length}</span>
+                  </div>
+                  <button
+                    onClick={() => onUnstage()}
+                    className="p-0.5 hover:bg-[#3c3c3c] rounded transition-colors"
+                    title="Unstage All"
+                  >
+                    <Minus className="w-3.5 h-3.5 text-[#858585] hover:text-[#d4d4d4]" />
+                  </button>
                 </div>
                 {stagedFiles.map((file) => (
-                  <div key={`staged-${file}`} className="flex items-center gap-2 px-4 py-1 text-[13px] text-[#6a9955] hover:bg-[#2a2d2e] cursor-default">
+                  <div key={`staged-${file}`} className="group flex items-center gap-2 px-4 py-1 text-[13px] text-[#6a9955] hover:bg-[#2a2d2e] cursor-default">
                     <Check className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{file}</span>
+                    <span className="truncate flex-1">{file}</span>
+                    <button
+                      onClick={() => onUnstage([file])}
+                      className="p-0.5 rounded hover:bg-[#3c3c3c] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      title="Unstage"
+                    >
+                      <Minus className="w-3 h-3 text-[#858585] hover:text-[#d4d4d4]" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -185,28 +209,70 @@ export function GitPanel({
             {/* Changes */}
             {totalChanges > 0 && (
               <div>
-                <div className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold text-[#858585] uppercase tracking-wider">
-                  Changes
-                  <span className="text-[10px] font-bold text-[#007acc]">{totalChanges}</span>
+                <div className="flex items-center justify-between px-4 py-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#858585] uppercase tracking-wider">
+                    Changes
+                    <span className="text-[10px] font-bold text-[#007acc]">{totalChanges}</span>
+                  </div>
+                  <button
+                    onClick={() => onStage()}
+                    className="p-0.5 hover:bg-[#3c3c3c] rounded transition-colors"
+                    title="Stage All"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-[#858585] hover:text-[#d4d4d4]" />
+                  </button>
                 </div>
                 {modifiedFiles.map((file) => (
-                  <div key={`mod-${file}`} className="flex items-center gap-2 px-4 py-1 text-[13px] text-[#dcdcaa] hover:bg-[#2a2d2e] cursor-default">
+                  <div
+                    key={`mod-${file}`}
+                    className="group flex items-center gap-2 px-4 py-1 text-[13px] text-[#dcdcaa] hover:bg-[#2a2d2e] cursor-pointer"
+                    onClick={() => onFileClick?.(file, "modified")}
+                  >
                     <FileEdit className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate flex-1">{file}</span>
+                    <button
+                      onClick={() => onStage([file])}
+                      className="p-0.5 rounded hover:bg-[#3c3c3c] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      title="Stage"
+                    >
+                      <Plus className="w-3 h-3 text-[#858585] hover:text-[#d4d4d4]" />
+                    </button>
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#dcdcaa]/10 text-[#dcdcaa] shrink-0">M</span>
                   </div>
                 ))}
                 {untrackedFiles.map((file) => (
-                  <div key={`new-${file}`} className="flex items-center gap-2 px-4 py-1 text-[13px] text-[#6a9955] hover:bg-[#2a2d2e] cursor-default">
+                  <div
+                    key={`new-${file}`}
+                    className="group flex items-center gap-2 px-4 py-1 text-[13px] text-[#6a9955] hover:bg-[#2a2d2e] cursor-pointer"
+                    onClick={() => onFileClick?.(file, "untracked")}
+                  >
                     <FilePlus2 className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate flex-1">{file}</span>
+                    <button
+                      onClick={() => onStage([file])}
+                      className="p-0.5 rounded hover:bg-[#3c3c3c] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      title="Stage"
+                    >
+                      <Plus className="w-3 h-3 text-[#858585] hover:text-[#d4d4d4]" />
+                    </button>
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#6a9955]/10 text-[#6a9955] shrink-0">U</span>
                   </div>
                 ))}
                 {deletedFiles.map((file) => (
-                  <div key={`del-${file}`} className="flex items-center gap-2 px-4 py-1 text-[13px] text-[#f44747] hover:bg-[#2a2d2e] cursor-default">
+                  <div
+                    key={`del-${file}`}
+                    className="group flex items-center gap-2 px-4 py-1 text-[13px] text-[#f44747] hover:bg-[#2a2d2e] cursor-pointer"
+                    onClick={() => onFileClick?.(file, "deleted")}
+                  >
                     <FileX2 className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate flex-1">{file}</span>
+                    <button
+                      onClick={() => onStage([file])}
+                      className="p-0.5 rounded hover:bg-[#3c3c3c] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      title="Stage"
+                    >
+                      <Plus className="w-3 h-3 text-[#858585] hover:text-[#d4d4d4]" />
+                    </button>
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#f44747]/10 text-[#f44747] shrink-0">D</span>
                   </div>
                 ))}

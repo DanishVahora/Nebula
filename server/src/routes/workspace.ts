@@ -12,6 +12,7 @@ import {
   renameEntry,
   deleteEntry,
   workspaceExists,
+  getAllFiles,
 } from "../lib/workspace";
 import { TEMPLATE_META, type TemplateId } from "../lib/templates";
 import { provisionWorkspace } from "../lib/provisioner";
@@ -253,6 +254,30 @@ router.get(
       res.json({ entries });
     } catch (error) {
       console.error("List directory error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// ── Flat list of all files (for Quick Open) ─────────────
+router.get(
+  "/:workspaceId/files/all",
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const workspace = await verifyOwnership(
+        req.params.workspaceId as string,
+        req.user!.userId
+      );
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const files = await getAllFiles(workspace.id);
+      res.json({ files });
+    } catch (error) {
+      console.error("Get all files error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }

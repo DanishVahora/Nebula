@@ -7,9 +7,102 @@ import { authenticate } from "../middleware/auth";
 import prisma from "../lib/prisma";
 import { getWorkspacePath, workspaceExists } from "../lib/workspace";
 import { terminalManager } from "../lib/terminal-manager";
+import { portRegistry } from "../lib/preview-manager";
+import { sessionManager } from "../lib/session-manager";
+import { workspaceWatcher, type FsChangeEvent } from "../lib/workspace-watcher";
 import { verifyToken, signToken } from "../lib/jwt";
 
 const router = Router();
+
+// ── REST: Get full workspace session state ──────────────
+router.get(
+  "/:workspaceId/session",
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const workspace = await prisma.workspace.findFirst({
+        where: {
+          id: req.params.workspaceId as string,
+          userId: req.user!.userId,
+        },
+      });
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const session = sessionManager.getSession(workspace.id);
+
+      // Validate ports are still reachable (removes stale ones)
+      const verifiedPorts = await sessionManager.getVerifiedPorts(workspace.id);
+      session.ports = verifiedPorts;
+
+      res.json(session);
+    } catch (error) {
+      console.error("Get session error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// ── REST: Save IDE UI state (preview, terminal, sidebar) ──
+router.put(
+  "/:workspaceId/session/ui-state",
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const workspace = await prisma.workspace.findFirst({
+        where: {
+          id: req.params.workspaceId as string,
+          userId: req.user!.userId,
+        },
+      });
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const { previewOpen, activePreviewPort, showTerminal, sidebarPanel } = req.body;
+      sessionManager.setUIState(workspace.id, {
+        ...(typeof previewOpen === "boolean" && { previewOpen }),
+        ...(activePreviewPort !== undefined && { activePreviewPort }),
+        ...(typeof showTerminal === "boolean" && { showTerminal }),
+        ...(typeof sidebarPanel === "string" && { sidebarPanel }),
+      });
+
+      res.json({ message: "UI state saved" });
+    } catch (error) {
+      console.error("Save UI state error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// ── REST: Get active preview ports for a workspace ──────
+router.get(
+  "/:workspaceId/ports",
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const workspace = await prisma.workspace.findFirst({
+        where: {
+          id: req.params.workspaceId as string,
+          userId: req.user!.userId,
+        },
+      });
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const ports = portRegistry.getPorts(workspace.id);
+      res.json({ ports });
+    } catch (error) {
+      console.error("Get ports error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 // ── REST: Create a new terminal ─────────────────────────
 router.post(
@@ -74,10 +167,64 @@ router.get(
         return;
       }
 
-      const terminalIds = terminalManager.list(workspace.id);
-      res.json({ terminals: terminalIds });
+      const sessions = terminalManager.list(workspace.id);
+      res.json({
+        terminals: sessions.map((s) => ({
+          id: s.id,
+          createdAt: s.createdAt.toISOString(),
+          exited: s.exited,
+          exitCode: s.exitCode,
+        })),
+      });
     } catch (error) {
       console.error("List terminals error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// ── REST: Attach / reconnect to an existing terminal ────
+router.post(
+  "/:workspaceId/terminal/:terminalId/attach",
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const workspace = await prisma.workspace.findFirst({
+        where: {
+          id: req.params.workspaceId as string,
+          userId: req.user!.userId,
+        },
+      });
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const session = terminalManager.get(
+        workspace.id,
+        req.params.terminalId as string
+      );
+      if (!session) {
+        res.status(404).json({ error: "Terminal not found" });
+        return;
+      }
+
+      // Generate a fresh short-lived token for the WebSocket connection
+      const wsToken = signToken({
+        userId: req.user!.userId,
+        email: (req as any).user.email ?? "",
+        role: (req as any).user.role ?? "user",
+      });
+
+      res.json({
+        terminalId: session.id,
+        workspaceId: workspace.id,
+        wsToken,
+        exited: session.exited,
+        exitCode: session.exitCode,
+      });
+    } catch (error) {
+      console.error("Attach terminal error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -225,14 +372,63 @@ export function attachTerminalWebSocket(server: Server) {
     "connection",
     (ws: WebSocket, _request: IncomingMessage, session: any) => {
       const ptyProcess = session.process;
+      const workspaceId: string = session.workspaceId;
+
+      // ── Replay scrollback buffer to the reconnecting client ──
+      const scrollback = terminalManager.getScrollback(workspaceId, session.id);
+      if (scrollback && ws.readyState === WebSocket.OPEN) {
+        ws.send(scrollback);
+      }
+
+      // ── Re-send already-detected ports so client restores preview ──
+      const existingPorts = portRegistry.getPorts(workspaceId);
+      for (const port of existingPorts) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "port-open", port }));
+        }
+      }
+
+      // If the process already exited before this WS connected, notify
+      if (session.exited) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(`\r\n[Process exited with code ${session.exitCode ?? "unknown"}]\r\n`);
+        }
+      }
 
       // PTY → WebSocket (terminal output to client)
-      const dataHandler = (data: string) => {
+      const dataDisposable = ptyProcess.onData((data: string) => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(data);
         }
+      });
+
+      // Listen for new port detections from the PortRegistry (which is
+      // fed by the background scanner in terminal-manager).  This fires
+      // even when the port was detected from a *different* terminal in
+      // the same workspace, keeping all connected clients in sync.
+      const onPortOpen = (evt: { workspaceId: string; port: number }) => {
+        if (evt.workspaceId === workspaceId && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "port-open", port: evt.port }));
+        }
       };
-      ptyProcess.onData(dataHandler);
+      const onPortClose = (evt: { workspaceId: string; port: number }) => {
+        if (evt.workspaceId === workspaceId && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "port-close", port: evt.port }));
+        }
+      };
+      portRegistry.on("port-open", onPortOpen);
+      portRegistry.on("port-close", onPortClose);
+
+      // ── Filesystem change events ──────────────────────────
+      // Start watching the workspace project directory (no-op if already watching)
+      workspaceWatcher.watch(workspaceId);
+
+      const onFsChange = (evt: FsChangeEvent) => {
+        if (evt.workspaceId === workspaceId && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "fs-change", event: evt.event, path: evt.path }));
+        }
+      };
+      workspaceWatcher.on("fs-change", onFsChange);
 
       // WebSocket → PTY (user input to terminal)
       ws.on("message", (message: any) => {
@@ -259,18 +455,23 @@ export function attachTerminalWebSocket(server: Server) {
         }
       });
 
-      // Clean up on close
+      // Clean up on close — dispose this WS's data listener but keep PTY alive
       ws.on("close", () => {
-        // We don't kill the PTY on WS close — user can reconnect
-        // The PTY lives until explicitly killed or workspace cleanup
+        try { dataDisposable.dispose(); } catch { /* already disposed */ }
+        try { exitDisposable.dispose(); } catch { /* already disposed */ }
+        portRegistry.off("port-open", onPortOpen);
+        portRegistry.off("port-close", onPortClose);
+        workspaceWatcher.off("fs-change", onFsChange);
       });
 
       ws.on("error", () => {
         // Swallow WS errors
       });
 
-      // If PTY exits, notify and close WS
-      ptyProcess.onExit(
+      // If PTY exits while this WS is connected, notify and close.
+      // Using a disposable so the listener is removed when the WS closes,
+      // preventing a listener leak when clients disconnect and reconnect.
+      const exitDisposable = ptyProcess.onExit(
         ({ exitCode }: { exitCode: number; signal?: number }) => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(`\r\n[Process exited with code ${exitCode}]\r\n`);

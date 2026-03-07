@@ -157,6 +157,78 @@ router.get(
   }
 );
 
+// ── Git Stage ───────────────────────────────────────────
+router.post(
+  "/:workspaceId/stage",
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const workspace = await prisma.workspace.findFirst({
+        where: { id: (req.params.workspaceId as string), userId: req.user!.userId },
+      });
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const result = await getGitForWorkspace(workspace.id, req.user!.userId);
+      if (!result) {
+        res.status(400).json({ error: "GitHub not connected" });
+        return;
+      }
+
+      const { files } = req.body; // string[] | undefined  — undefined means stage all
+      if (files && Array.isArray(files) && files.length > 0) {
+        await result.git.add(files);
+      } else {
+        await result.git.add(".");
+      }
+
+      const status = await result.git.status();
+      res.json({ message: "Staged", staged: status.staged });
+    } catch (error) {
+      console.error("Git stage error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// ── Git Unstage ─────────────────────────────────────────
+router.post(
+  "/:workspaceId/unstage",
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const workspace = await prisma.workspace.findFirst({
+        where: { id: (req.params.workspaceId as string), userId: req.user!.userId },
+      });
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const result = await getGitForWorkspace(workspace.id, req.user!.userId);
+      if (!result) {
+        res.status(400).json({ error: "GitHub not connected" });
+        return;
+      }
+
+      const { files } = req.body; // string[] | undefined
+      if (files && Array.isArray(files) && files.length > 0) {
+        await result.git.reset(["HEAD", "--", ...files]);
+      } else {
+        await result.git.reset(["HEAD"]);
+      }
+
+      const status = await result.git.status();
+      res.json({ message: "Unstaged", staged: status.staged });
+    } catch (error) {
+      console.error("Git unstage error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // ── Git Commit ──────────────────────────────────────────
 router.post(
   "/:workspaceId/commit",
@@ -183,7 +255,13 @@ router.post(
         return;
       }
 
-      await result.git.add(".");
+      // Only commit what has been staged (don't auto-add everything)
+      const status = await result.git.status();
+      if (status.staged.length === 0) {
+        // If nothing is staged, stage everything before committing (convenience)
+        await result.git.add(".");
+      }
+
       const commitResult = await result.git.commit(message);
 
       res.json({
@@ -379,6 +457,65 @@ router.post(
     } catch (error: any) {
       console.error("Git branch switch error:", error);
       res.status(500).json({ error: error.message || "Branch operation failed" });
+    }
+  }
+);
+
+// ── Git Diff for a single file ──────────────────────────
+router.get(
+  "/:workspaceId/diff",
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const workspace = await prisma.workspace.findFirst({
+        where: { id: req.params.workspaceId as string, userId: req.user!.userId },
+      });
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const filePath = req.query.file as string | undefined;
+      if (!filePath) {
+        res.status(400).json({ error: "Query parameter 'file' is required" });
+        return;
+      }
+
+      const result = await getGitForWorkspace(workspace.id, req.user!.userId);
+      if (!result) {
+        res.status(400).json({ error: "GitHub not connected" });
+        return;
+      }
+
+      const hasOwnRepo = await isOwnGitRepo(workspace.id);
+      if (!hasOwnRepo) {
+        res.status(400).json({ error: "No git repository found" });
+        return;
+      }
+
+      // Get the current (working-tree) version of the file
+      const wsPath = getWorkspacePath(workspace.id);
+      let currentContent: string;
+      try {
+        currentContent = await fs.readFile(path.join(wsPath, filePath), "utf-8");
+      } catch {
+        // File might be deleted
+        currentContent = "";
+      }
+
+      // Get the HEAD version (last committed) of the file
+      let originalContent: string;
+      try {
+        originalContent = await result.git.show([`HEAD:${filePath}`]);
+      } catch {
+        // File is untracked / new — no HEAD version
+        originalContent = "";
+      }
+
+      res.json({ original: originalContent, modified: currentContent, filePath });
+    } catch (error) {
+      console.error("Git diff error:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   }
 );

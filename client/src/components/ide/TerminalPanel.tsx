@@ -22,14 +22,21 @@ interface TerminalTab {
 
 interface TerminalPanelProps {
   workspaceId: string;
+  onPortDetected?: (port: number) => void;
+  onFsChange?: (event: string, path: string) => void;
 }
 
-export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
+export function TerminalPanel({ workspaceId, onPortDetected, onFsChange }: TerminalPanelProps) {
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const tabCounterRef = useRef(0);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  // Keep a stable reference to the callbacks
+  const onPortDetectedRef = useRef(onPortDetected);
+  onPortDetectedRef.current = onPortDetected;
+  const onFsChangeRef = useRef(onFsChange);
+  onFsChangeRef.current = onFsChange;
   // Persistent wrapper div per terminal — survives tab switches
   const wrappersRef = useRef<Map<string, HTMLDivElement>>(new Map());
   // Track which terminals have already been opened (open() should only be called once)
@@ -46,13 +53,12 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
   // can be overridden via VITE_API_URL.
   const wsBaseUrl = API_BASE.replace(/^http/, "ws");
 
-  // ── Create a new terminal session ─────────────────────
-  const createTerminal = useCallback(async () => {
-    try {
-      const res = await workspaceAPI.createTerminal(workspaceId);
-      const { terminalId, wsToken } = res.data;
-      tabCounterRef.current += 1;
+  // Track whether we've already initialised on mount to avoid double-init
+  const initDoneRef = useRef(false);
 
+  // ── Shared helper: build an xterm + WS tab for a given terminalId + token ──
+  const buildTerminalTab = useCallback(
+    (terminalId: string, wsToken: string, label: string): TerminalTab => {
       const term = new Terminal({
         cursorBlink: true,
         cursorStyle: "bar",
@@ -91,22 +97,36 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
       term.loadAddon(fitAddon);
       term.loadAddon(webLinksAddon);
 
-      // Connect WebSocket — append the short-lived token so the backend
-      // can authenticate even when cookies aren't sent cross-origin.
       const wsUrl = `${wsBaseUrl}/ws/terminal/${workspaceId}/${terminalId}?token=${encodeURIComponent(wsToken)}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        // Send initial size
         try {
           fitAddon.fit();
           ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-        } catch {
-          // Ignore fit errors before mount
-        }
+        } catch { /* ignore */ }
       };
 
       ws.onmessage = (event) => {
+        const data = typeof event.data === "string" ? event.data : "";
+        if (data.startsWith("{")) {
+          try {
+            const msg = JSON.parse(data);
+            if (msg.type === "port-open" && typeof msg.port === "number") {
+              onPortDetectedRef.current?.(msg.port);
+              return;
+            }
+            if (msg.type === "port-close" && typeof msg.port === "number") {
+              // Port closed — could remove from preview, but for now just
+              // let the port list be refreshed via the Ports panel.
+              return;
+            }
+            if (msg.type === "fs-change") {
+              onFsChangeRef.current?.(msg.event, msg.path);
+              return;
+            }
+          } catch { /* not JSON */ }
+        }
         term.write(event.data);
       };
 
@@ -116,32 +136,51 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
         );
       };
 
-      ws.onerror = () => {
-        // Will trigger onclose
-      };
+      ws.onerror = () => { /* triggers onclose */ };
 
-      // Forward terminal input to WS
       term.onData((data) => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(data);
         }
       });
 
-      const newTab: TerminalTab = {
-        id: terminalId,
-        label: `Terminal ${tabCounterRef.current}`,
-        terminal: term,
-        fitAddon,
-        ws,
-        alive: true,
-      };
+      return { id: terminalId, label, terminal: term, fitAddon, ws, alive: true };
+    },
+    [workspaceId, wsBaseUrl]
+  );
 
+  // ── Create a brand-new terminal session ───────────────
+  const createTerminal = useCallback(async () => {
+    try {
+      const res = await workspaceAPI.createTerminal(workspaceId);
+      const { terminalId, wsToken } = res.data;
+      tabCounterRef.current += 1;
+
+      const newTab = buildTerminalTab(terminalId, wsToken, `Terminal ${tabCounterRef.current}`);
       setTabs((prev) => [...prev, newTab]);
       setActiveTabId(terminalId);
     } catch (error) {
       console.error("Failed to create terminal:", error);
     }
-  }, [workspaceId, wsBaseUrl]);
+  }, [workspaceId, buildTerminalTab]);
+
+  // ── Reconnect to an existing terminal session ─────────
+  const reconnectTerminal = useCallback(
+    async (existingId: string, label: string): Promise<boolean> => {
+      try {
+        const res = await workspaceAPI.attachTerminal(workspaceId, existingId);
+        const { terminalId, wsToken } = res.data;
+
+        const tab = buildTerminalTab(terminalId, wsToken, label);
+        setTabs((prev) => [...prev, tab]);
+        return true;
+      } catch {
+        // Terminal may have been cleaned up between list and attach
+        return false;
+      }
+    },
+    [workspaceId, buildTerminalTab]
+  );
 
   // ── Close a terminal tab ──────────────────────────────
   const closeTerminal = useCallback(
@@ -255,13 +294,50 @@ export function TerminalPanel({ workspaceId }: TerminalPanelProps) {
     return () => resizeObserverRef.current?.disconnect();
   }, []);
 
-  // ── Auto-create first terminal on mount ───────────────
+  // ── Restore existing sessions or create first terminal on mount ──
   useEffect(() => {
-    createTerminal();
+    if (initDoneRef.current) return;
+    initDoneRef.current = true;
+
+    (async () => {
+      try {
+        // Check for existing PTY sessions (surviving page reload)
+        const res = await workspaceAPI.listTerminals(workspaceId);
+        const existing = (res.data.terminals || []).filter(
+          (t: { exited: boolean }) => !t.exited
+        );
+
+        if (existing.length > 0) {
+          // Reconnect to all surviving sessions
+          let reconnectedAny = false;
+          for (let i = 0; i < existing.length; i++) {
+            tabCounterRef.current += 1;
+            const success = await reconnectTerminal(
+              existing[i].id,
+              `Terminal ${tabCounterRef.current}`
+            );
+            if (success && !reconnectedAny) {
+              setActiveTabId(existing[i].id);
+              reconnectedAny = true;
+            }
+          }
+          // If all reconnects failed, create a fresh terminal
+          if (!reconnectedAny) {
+            await createTerminal();
+          }
+        } else {
+          // No existing sessions — create a new terminal
+          await createTerminal();
+        }
+      } catch {
+        // List failed — fall back to creating a new terminal
+        await createTerminal();
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Clean up all terminals on unmount ─────────────────
+  // ── Clean up WS connections on unmount (PTY processes survive) ──
   useEffect(() => {
     return () => {
       tabsRef.current.forEach((tab) => {

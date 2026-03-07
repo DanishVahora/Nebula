@@ -235,6 +235,51 @@ export async function deleteEntry(
   }
 }
 
+// ── Flat list of all files (recursive) ──────────────────
+const IGNORED_DIRS = new Set([
+  "node_modules", ".git", "dist", "build", ".next", ".nuxt",
+  ".svelte-kit", ".output", "__pycache__", ".cache", "coverage",
+  ".turbo", ".vercel", ".angular",
+]);
+
+export async function getAllFiles(
+  workspaceId: string,
+  relativePath: string = ""
+): Promise<string[]> {
+  const wsPath = getWorkspacePath(workspaceId);
+  const dirPath = path.join(wsPath, relativePath);
+
+  const resolved = path.resolve(dirPath);
+  if (!resolved.startsWith(path.resolve(wsPath))) {
+    throw new Error("Path traversal detected");
+  }
+
+  const results: string[] = [];
+
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || IGNORED_DIRS.has(entry.name)) continue;
+
+      const entryRelPath = relativePath
+        ? `${relativePath}/${entry.name}`
+        : entry.name;
+
+      if (entry.isDirectory()) {
+        const nested = await getAllFiles(workspaceId, entryRelPath);
+        results.push(...nested);
+      } else {
+        results.push(entryRelPath);
+      }
+    }
+  } catch {
+    // Directory doesn't exist or isn't readable
+  }
+
+  return results;
+}
+
 // ── Check if workspace exists on disk ───────────────────
 export async function workspaceExists(workspaceId: string): Promise<boolean> {
   const wsPath = getWorkspacePath(workspaceId);
