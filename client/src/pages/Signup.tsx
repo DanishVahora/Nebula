@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { WavyBackground } from "@/components/ui/wavy-background";
+import { GraduationCap, BookOpen } from "lucide-react";
 
 export default function Signup() {
-  const { isAuthenticated, loading, login } = useAuth();
+  const { isAuthenticated, loading, login, user } = useAuth();
   const [searchParams] = useSearchParams();
   const error = searchParams.get("error");
+  const [selectedRole, setSelectedRole] = useState<"STUDENT" | "TEACHER">("STUDENT");
 
   if (loading) {
     return (
@@ -16,9 +19,15 @@ export default function Signup() {
     );
   }
 
-  if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated && user) {
+    const target = user.role === "TEACHER" ? "/teacher-dashboard" : "/student-dashboard";
+    return <Navigate to={target} replace />;
   }
+
+  const handleLogin = (provider: "google" | "github") => {
+    localStorage.setItem("nebula_signup_role", selectedRole);
+    login(provider);
+  };
 
   return (
     <WavyBackground
@@ -70,10 +79,41 @@ export default function Signup() {
 
         {/* Auth card */}
         <div className="rounded-2xl border border-white/[0.08] bg-black/60 p-8 shadow-2xl shadow-black/50 backdrop-blur-xl">
+          {/* Role selection */}
+          <div className="mb-5">
+            <p className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-zinc-500">
+              I am a
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setSelectedRole("STUDENT")}
+                className={`group flex flex-col items-center gap-2 rounded-xl border p-4 transition-all duration-200 ${
+                  selectedRole === "STUDENT"
+                    ? "border-green-500/40 bg-green-500/10 text-white"
+                    : "border-white/[0.08] bg-white/[0.02] text-zinc-400 hover:border-white/[0.15] hover:text-zinc-200"
+                }`}
+              >
+                <GraduationCap className={`h-6 w-6 ${selectedRole === "STUDENT" ? "text-green-400" : "text-zinc-500"}`} />
+                <span className="text-sm font-medium">Student</span>
+              </button>
+              <button
+                onClick={() => setSelectedRole("TEACHER")}
+                className={`group flex flex-col items-center gap-2 rounded-xl border p-4 transition-all duration-200 ${
+                  selectedRole === "TEACHER"
+                    ? "border-yellow-500/40 bg-yellow-500/10 text-white"
+                    : "border-white/[0.08] bg-white/[0.02] text-zinc-400 hover:border-white/[0.15] hover:text-zinc-200"
+                }`}
+              >
+                <BookOpen className={`h-6 w-6 ${selectedRole === "TEACHER" ? "text-yellow-400" : "text-zinc-500"}`} />
+                <span className="text-sm font-medium">Teacher</span>
+              </button>
+            </div>
+          </div>
+
           <div className="space-y-3">
             {/* Google */}
             <button
-              onClick={() => login("google")}
+              onClick={() => handleLogin("google")}
               className="group flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.04] text-sm font-medium text-zinc-200 transition-all duration-200 hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white"
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
@@ -96,7 +136,7 @@ export default function Signup() {
 
             {/* GitHub */}
             <button
-              onClick={() => login("github")}
+              onClick={() => handleLogin("github")}
               className="group flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.04] text-sm font-medium text-zinc-200 transition-all duration-200 hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white"
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">

@@ -7,13 +7,40 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Users,
+  BarChart3,
+  Trophy,
+  School,
+  FileCheck,
+  type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 
-const navItems = [
+export interface NavItem {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+export const studentNavItems: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "classrooms", label: "Classrooms", icon: School },
   { id: "workspaces", label: "Workspaces", icon: FolderOpen },
   { id: "assignments", label: "Assignments", icon: ClipboardList },
+  { id: "contests", label: "Contests", icon: Trophy },
+  { id: "submissions", label: "Submissions", icon: FileCheck },
+  { id: "github", label: "GitHub", icon: Github },
+  { id: "settings", label: "Settings", icon: Settings },
+];
+
+export const teacherNavItems: NavItem[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "classrooms", label: "Classrooms", icon: School },
+  { id: "assignments", label: "Assignments", icon: ClipboardList },
+  { id: "contests", label: "Contests", icon: Trophy },
+  { id: "students", label: "Students", icon: Users },
+  { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "workspaces", label: "Workspaces", icon: FolderOpen },
   { id: "github", label: "GitHub", icon: Github },
   { id: "settings", label: "Settings", icon: Settings },
 ];
@@ -23,10 +50,12 @@ interface SidebarProps {
   onNavigate: (section: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  navItems?: NavItem[];
 }
 
-export function Sidebar({ activeSection, onNavigate, collapsed, onToggleCollapse }: SidebarProps) {
+export function Sidebar({ activeSection, onNavigate, collapsed, onToggleCollapse, navItems: items }: SidebarProps) {
   const { isDark } = useTheme();
+  const navItems = items || studentNavItems;
 
   return (
     <motion.aside

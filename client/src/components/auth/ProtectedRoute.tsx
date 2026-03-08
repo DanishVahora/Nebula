@@ -29,7 +29,9 @@ export function ProtectedRoute({
   }
 
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
+    // Redirect to the correct role-based dashboard instead of generic /dashboard
+    const redirectTo = user.role === "TEACHER" ? "/teacher-dashboard" : "/student-dashboard";
+    return <Navigate to={redirectTo} replace />;
   }
 
   return <>{children}</>;

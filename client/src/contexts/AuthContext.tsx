@@ -6,7 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { authAPI } from "@/lib/api";
+import { authAPI, userAPI } from "@/lib/api";
 
 export interface ConnectedAccount {
   id: string;
@@ -35,6 +35,7 @@ interface AuthContextType {
   login: (provider: "google" | "github") => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  updateRole: (role: "STUDENT" | "TEACHER") => Promise<void>;
   hasGitHubConnected: boolean;
 }
 
@@ -83,6 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchUser();
   };
 
+  const updateRole = async (role: "STUDENT" | "TEACHER") => {
+    await userAPI.updateRole(role);
+    await fetchUser();
+  };
+
   const hasGitHubConnected =
     user?.connectedAccounts?.some((a) => a.provider === "github") ?? false;
 
@@ -96,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         refreshUser,
+        updateRole,
         hasGitHubConnected,
       }}
     >

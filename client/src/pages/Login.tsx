@@ -4,7 +4,7 @@ import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { WavyBackground } from "@/components/ui/wavy-background";
 
 export default function Login() {
-  const { isAuthenticated, loading, login } = useAuth();
+  const { isAuthenticated, loading, login, user } = useAuth();
   const [searchParams] = useSearchParams();
   const error = searchParams.get("error");
 
@@ -16,8 +16,9 @@ export default function Login() {
     );
   }
 
-  if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated && user) {
+    const target = user.role === "TEACHER" ? "/teacher-dashboard" : "/student-dashboard";
+    return <Navigate to={target} replace />;
   }
 
   return (

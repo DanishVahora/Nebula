@@ -25,6 +25,9 @@ model User {
   connectedAccounts ConnectedAccount[]
   workspaces        Workspace[]
   assignments       Assignment[]
+  submissions       Submission[]
+  classrooms        Classroom[]
+  classroomMembers  ClassroomMember[]
 
   @@unique([provider, providerId])
 }
@@ -72,12 +75,77 @@ model Assignment {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   title       String
   description String?
-  dueDate     DateTime?
-  status      String    @default("pending") // pending | submitted | graded
+  type        String    @default("WEB_DEV") // WEB_DEV | DSA
+  difficulty  String    @default("MEDIUM")  // EASY | MEDIUM | HARD
+  template    String?   // react | nextjs | nodejs | vite-react-ts | null (for DSA)
+  starterCode String?   // JSON: { "filename": "content", ... }
+  language    String?   // For DSA: cpp | python | java
+  timeLimit   Int?      // Minutes allowed to complete
+  deadline    DateTime?
+  maxMarks    Int       @default(100)
+  aiAllowed   Boolean   @default(false)
 
-  userId    String   @db.ObjectId
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  classroomId String    @db.ObjectId
+  createdBy   String    @db.ObjectId
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classroom   Classroom  @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  creator     User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  testCases   TestCase[]
+  submissions Submission[]
+}
+
+model TestCase {
+  id             String @id @default(auto()) @map("_id") @db.ObjectId
+  assignmentId   String @db.ObjectId
+  input          String
+  expectedOutput String
+  weight         Int    @default(1) // Marks weight for this test case
+  isHidden       Boolean @default(false)
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+}
+
+model Submission {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  assignmentId String    @db.ObjectId
+  studentId    String    @db.ObjectId
+  workspaceId  String?   @db.ObjectId
+  code         String?   // Snapshot of submitted code (for DSA)
+  score        Int?
+  feedback     String?
+  status       String    @default("IN_PROGRESS") // IN_PROGRESS | SUBMITTED | GRADED | TIMED_OUT
+  startedAt    DateTime  @default(now())
+  submittedAt  DateTime?
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model Classroom {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String?
+  joinCode    String   @unique
+  teacherId   String   @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teacher     User               @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  members     ClassroomMember[]
+  assignments Assignment[]
+}
+
+model ClassroomMember {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  classroomId String   @db.ObjectId
+  userId      String   @db.ObjectId
+  role        String   @default("STUDENT") // STUDENT | TEACHER
+  joinedAt    DateTime @default(now())
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classroomId, userId])
 }

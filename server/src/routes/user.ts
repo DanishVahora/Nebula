@@ -1,7 +1,17 @@
 import { Router, Request, Response } from "express";
-import { authenticate } from "../middleware/auth";
+import { authenticate, requireRole } from "../middleware/auth";
+import { signToken } from "../lib/jwt";
+import { env } from "../config/env";
 import prisma from "../lib/prisma";
 import { deleteWorkspaceFiles } from "../lib/workspace";
+
+const cookieOptions = {
+  httpOnly: true,
+  secure: env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: "/",
+};
 
 const router = Router();
 
@@ -115,7 +125,11 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const assignments = await prisma.assignment.findMany({
-        where: { userId: req.user!.userId },
+        where: { createdBy: req.user!.userId },
+        include: {
+          classroom: { select: { id: true, name: true } },
+          _count: { select: { testCases: true, submissions: true } },
+        },
         orderBy: { createdAt: "desc" },
       });
 
@@ -127,14 +141,14 @@ router.get(
   }
 );
 
-// ── Update user role (admin only for testing) ──────────
+// ── Update user role ───────────────────────────────────
 router.patch("/role", authenticate, async (req: Request, res: Response) => {
   try {
     const { role } = req.body;
-    const validRoles = ["STUDENT", "TEACHER", "ADMIN"];
+    const validRoles = ["STUDENT", "TEACHER"];
 
     if (!role || !validRoles.includes(role)) {
-      res.status(400).json({ error: "Invalid role" });
+      res.status(400).json({ error: "Invalid role. Must be STUDENT or TEACHER." });
       return;
     }
 
@@ -144,11 +158,52 @@ router.patch("/role", authenticate, async (req: Request, res: Response) => {
       select: { id: true, email: true, name: true, role: true },
     });
 
+    // Re-issue JWT with updated role
+    const token = signToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
+    res.cookie("token", token, cookieOptions);
+
     res.json({ user });
   } catch (error) {
     console.error("Update role error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// ── Teacher-only: Create assignment (legacy — use /api/assignments instead) ─
+router.post(
+  "/assignments",
+  authenticate,
+  requireRole("TEACHER"),
+  async (req: Request, res: Response) => {
+    try {
+      const { classroomId, title, description, type, deadline } = req.body;
+
+      if (!classroomId || !title) {
+        res.status(400).json({ error: "classroomId and title are required" });
+        return;
+      }
+
+      const assignment = await prisma.assignment.create({
+        data: {
+          title,
+          description: description || null,
+          type: type || "WEB_DEV",
+          deadline: deadline ? new Date(deadline) : null,
+          classroomId,
+          createdBy: req.user!.userId,
+        },
+      });
+
+      res.status(201).json({ assignment });
+    } catch (error) {
+      console.error("Create assignment error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 export default router;

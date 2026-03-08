@@ -15,6 +15,9 @@ import workspaceTerminalRoutes, {
   attachTerminalWebSocket,
 } from "./routes/workspace-terminal";
 import previewRoutes from "./routes/preview";
+import classroomRoutes from "./routes/classroom";
+import assignmentRoutes from "./routes/assignment";
+import assignmentAIRoutes from "./routes/assignment-ai";
 import { previewFallbackProxy } from "./middleware/preview-fallback";
 import { sessionManager } from "./lib/session-manager";
 
@@ -48,6 +51,9 @@ app.use("/api/workspace-git", workspaceGitRoutes);
 app.use("/api/workspace-run", workspaceRunRoutes);
 app.use("/api/workspace", workspaceTerminalRoutes);
 app.use("/api/preview", previewRoutes);
+app.use("/api/classrooms", classroomRoutes);
+app.use("/api/assignments", assignmentRoutes);
+app.use("/api/assignments/ai", assignmentAIRoutes);
 
 // ── Health check ───────────────────────────────────────
 app.get("/api/health", (_req, res) => {

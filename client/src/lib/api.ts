@@ -55,6 +55,76 @@ export const userAPI = {
   }) => api.post("/user/workspaces", data),
   deleteWorkspace: (id: string) => api.delete(`/user/workspaces/${id}`),
   getAssignments: () => api.get("/user/assignments"),
+  createAssignment: (data: {
+    title: string;
+    description?: string;
+    dueDate?: string;
+  }) => api.post("/user/assignments", data),
+  updateRole: (role: "STUDENT" | "TEACHER") =>
+    api.patch("/user/role", { role }),
+};
+
+// Classroom endpoints
+export const classroomAPI = {
+  create: (data: { name: string; description?: string }) =>
+    api.post("/classrooms", data),
+  join: (joinCode: string) =>
+    api.post("/classrooms/join", { joinCode }),
+  getMy: () =>
+    api.get("/classrooms/my"),
+  getOne: (id: string) =>
+    api.get(`/classrooms/${id}`),
+  getStudents: (id: string) =>
+    api.get(`/classrooms/${id}/students`),
+};
+
+// Assignment endpoints
+export const assignmentAPI = {
+  create: (data: {
+    classroomId: string;
+    title: string;
+    description?: string;
+    type: "WEB_DEV" | "DSA";
+    difficulty?: string;
+    template?: string;
+    starterCode?: Record<string, string>;
+    language?: string;
+    timeLimit?: number;
+    deadline?: string;
+    maxMarks?: number;
+    aiAllowed?: boolean;
+    testCases?: { input: string; expectedOutput: string; weight?: number; isHidden?: boolean }[];
+  }) => api.post("/assignments", data),
+
+  getForClassroom: (classroomId: string) =>
+    api.get(`/assignments/classroom/${classroomId}`),
+
+  getOne: (id: string) =>
+    api.get(`/assignments/${id}`),
+
+  start: (id: string) =>
+    api.post(`/assignments/${id}/start`),
+
+  submit: (id: string, data?: { code?: string }) =>
+    api.post(`/assignments/${id}/submit`, data || {}),
+
+  getSubmissions: (id: string) =>
+    api.get(`/assignments/${id}/submissions`),
+
+  gradeSubmission: (submissionId: string, data: { score: number; feedback?: string }) =>
+    api.post(`/assignments/submissions/${submissionId}/grade`, data),
+
+  getMySubmissions: () =>
+    api.get("/assignments/my/submissions"),
+
+  getMyAll: () =>
+    api.get("/assignments/my/all"),
+
+  delete: (id: string) =>
+    api.delete(`/assignments/${id}`),
+
+  aiGenerate: (data: { type: string; topic: string; difficulty?: string; language?: string; template?: string }) =>
+    api.post("/assignments/ai/generate", data),
 };
 
 // Workspace IDE endpoints
