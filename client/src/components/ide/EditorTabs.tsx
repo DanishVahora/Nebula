@@ -1,5 +1,6 @@
-import { useRef, useCallback } from "react";
-import Editor, { type OnMount } from "@monaco-editor/react";
+import { useRef, useCallback, useEffect } from "react";
+import { CodeiumEditor } from "@codeium/react-code-editor";
+import type { OnMount } from "@monaco-editor/react";
 import type { FileTab } from "@/pages/WorkspaceIDE";
 import { X, Circle } from "lucide-react";
 
@@ -27,14 +28,37 @@ export function EditorTabs({
   tabs, activeTab, onTabClick, onTabClose, onContentChange, onSave, activeFileTab,
 }: EditorTabsProps) {
   const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+  const isUpdatingRef = useRef(false);
 
-  const handleEditorMount: OnMount = (editor, _monaco) => {
+  const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
     editor.addCommand(2097, () => { if (activeTab) onSave(activeTab); });
   };
 
+  // Update editor content and language when active tab changes, without remounting
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco || !activeFileTab) return;
+
+    isUpdatingRef.current = true;
+    const model = editor.getModel();
+    if (model) {
+      // Update language
+      monaco.editor.setModelLanguage(model, activeFileTab.language || "plaintext");
+      // Update content only if it differs
+      if (model.getValue() !== activeFileTab.content) {
+        model.setValue(activeFileTab.content);
+      }
+    }
+    isUpdatingRef.current = false;
+  }, [activeFileTab?.path, activeFileTab?.language]);
+
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
+      if (isUpdatingRef.current) return;
       if (activeTab && value !== undefined) onContentChange(activeTab, value);
     },
     [activeTab, onContentChange]
@@ -82,8 +106,7 @@ export function EditorTabs({
       {/* Editor */}
       <div className="flex-1 min-h-0">
         {activeFileTab ? (
-          <Editor
-            key={activeFileTab.path}
+          <CodeiumEditor
             height="100%"
             language={activeFileTab.language}
             value={activeFileTab.content}

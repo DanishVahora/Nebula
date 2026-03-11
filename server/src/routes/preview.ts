@@ -29,6 +29,28 @@ proxy.on("error", (err, _req, res) => {
   }
 });
 
+// Remove restrictive CSP headers and set a tracking cookie so the
+// preview-fallback middleware can identify nested resource requests
+// (e.g. ES module imports whose Referer is the importing module URL
+// rather than the /api/preview/... page URL).
+proxy.on("proxyRes", (proxyRes, req) => {
+  delete proxyRes.headers["content-security-policy"];
+  delete proxyRes.headers["x-frame-options"];
+
+  const port = (req as any).__orbitPreviewPort;
+  if (port) {
+    const cookieStr = `__orbit_preview_port=${port}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`;
+    const existing = proxyRes.headers["set-cookie"];
+    if (Array.isArray(existing)) {
+      existing.push(cookieStr);
+    } else if (existing) {
+      proxyRes.headers["set-cookie"] = [existing, cookieStr];
+    } else {
+      proxyRes.headers["set-cookie"] = [cookieStr];
+    }
+  }
+});
+
 // ── Helper: validate and proxy ─────────────────────────
 async function handlePreviewProxy(req: Request, res: Response) {
   const workspaceId = req.params.workspaceId as string;
@@ -49,6 +71,9 @@ async function handlePreviewProxy(req: Request, res: Response) {
     return;
   }
 
+  // Store port on the request so the proxyRes handler can set the tracking cookie
+  (req as any).__orbitPreviewPort = portNum;
+
   const target = `http://localhost:${portNum}`;
 
   // Rewrite URL: strip /api/preview/:workspaceId/:port prefix
@@ -58,6 +83,14 @@ async function handlePreviewProxy(req: Request, res: Response) {
     forwardPath = forwardPath.slice(prefix.length) || "/";
   }
   req.url = forwardPath;
+
+  // Remove any CSP / framing headers set by upstream middleware (e.g. helmet)
+  // so the proxied page can run inline scripts and be embedded in the iframe.
+  res.removeHeader("Content-Security-Policy");
+  res.removeHeader("X-Frame-Options");
+  res.removeHeader("Cross-Origin-Opener-Policy");
+  res.removeHeader("Cross-Origin-Resource-Policy");
+  res.removeHeader("X-Content-Type-Options");
 
   proxy.web(req, res, { target });
 }

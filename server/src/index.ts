@@ -20,11 +20,40 @@ import assignmentRoutes from "./routes/assignment";
 import assignmentAIRoutes from "./routes/assignment-ai";
 import { previewFallbackProxy } from "./middleware/preview-fallback";
 import { sessionManager } from "./lib/session-manager";
+import httpProxy from "http-proxy";
+import * as cookieModule from "cookie";
+import { verifyToken } from "./lib/jwt";
 
 const app = express();
 
 // ── Security ───────────────────────────────────────────
-app.use(helmet());
+const helmetMiddleware = helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "frame-ancestors": ["'self'", env.CLIENT_URL],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+});
+
+// Skip helmet for preview routes and preview-fallback requests so that
+// proxied pages (Vite dev servers etc.) can run inline scripts and load
+// root-relative resources without being blocked by the server's CSP.
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/preview/")) return next();
+  const referer = (req.headers.referer || req.headers.referrer || "") as string;
+  if (
+    !req.path.startsWith("/api/") &&
+    !req.path.startsWith("/ws/") &&
+    (referer.includes("/api/preview/") ||
+      cookieModule.parse(req.headers.cookie || "").__orbit_preview_port)
+  ) {
+    return next();
+  }
+  helmetMiddleware(req, res, next);
+});
+
 app.use(
   cors({
     origin: env.CLIENT_URL,
@@ -67,6 +96,39 @@ const server = http.createServer(app);
 
 // ── Attach terminal WebSocket handler ──────────────────
 attachTerminalWebSocket(server);
+
+// ── Proxy WebSocket upgrades for preview (Vite HMR etc.) ──
+const previewWsProxy = httpProxy.createProxyServer({ ws: true, changeOrigin: true });
+previewWsProxy.on("error", (err) => {
+  console.error("[Preview WS Proxy] Error:", err.message);
+});
+
+server.on("upgrade", (request, socket, head) => {
+  const url = request.url || "";
+
+  // Skip terminal WebSocket paths (handled by attachTerminalWebSocket)
+  if (url.startsWith("/ws/terminal/")) return;
+
+  // Check for preview port cookie
+  const cookies = cookieModule.parse(request.headers.cookie || "");
+  const port = parseInt(cookies.__orbit_preview_port || "", 10);
+  const token = cookies.token;
+
+  if (!port || isNaN(port) || port < 1 || port > 65535 || !token) {
+    socket.destroy();
+    return;
+  }
+
+  try {
+    verifyToken(token);
+  } catch {
+    socket.destroy();
+    return;
+  }
+
+  const target = `http://localhost:${port}`;
+  previewWsProxy.ws(request, socket, head, { target });
+});
 
 server.listen(env.PORT, () => {
   console.log(`🚀 Nebula server running on http://localhost:${env.PORT}`);

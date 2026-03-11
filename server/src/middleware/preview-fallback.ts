@@ -27,6 +27,12 @@ fallbackProxy.on("error", (err, _req, res) => {
   }
 });
 
+// Remove restrictive CSP headers from proxied preview responses
+fallbackProxy.on("proxyRes", (proxyRes) => {
+  delete proxyRes.headers["content-security-policy"];
+  delete proxyRes.headers["x-frame-options"];
+});
+
 /**
  * Middleware that catches root-relative requests originating from preview iframes.
  *
@@ -51,26 +57,40 @@ export function previewFallbackProxy(
     return;
   }
 
+  let port: number | null = null;
+
+  // ── Strategy 1: Extract port from Referer header ─────
+  // Works for resources directly referenced from the preview page HTML.
   const referer =
     (req.headers.referer as string) ||
     (req.headers.referrer as string) ||
     "";
 
-  if (!referer) {
-    next();
-    return;
+  if (referer) {
+    const match = referer.match(PREVIEW_REFERER_REGEX);
+    if (match) {
+      const parsed = parseInt(match[2], 10);
+      if (!isNaN(parsed) && parsed > 0 && parsed < 65536) {
+        port = parsed;
+      }
+    }
   }
 
-  const match = referer.match(PREVIEW_REFERER_REGEX);
-  if (!match) {
-    next();
-    return;
+  // ── Strategy 2: Fall back to tracking cookie ─────────
+  // Handles nested ES module imports where the Referer is the
+  // importing module’s URL (e.g. /src/main.tsx) instead of the
+  // /api/preview/... page URL. The cookie is set by the preview
+  // proxy on the initial page response.
+  if (!port) {
+    const cookies = cookie.parse(req.headers.cookie || "");
+    const cookiePort = parseInt(cookies.__orbit_preview_port || "", 10);
+    if (!isNaN(cookiePort) && cookiePort > 0 && cookiePort < 65536) {
+      port = cookiePort;
+    }
   }
 
-  const [, , portStr] = match;
-  const port = parseInt(portStr, 10);
-
-  if (isNaN(port) || port < 1 || port > 65535) {
+  // Neither strategy matched — not a preview resource request
+  if (!port) {
     next();
     return;
   }
@@ -89,6 +109,13 @@ export function previewFallbackProxy(
     next();
     return;
   }
+
+  // Remove any CSP / framing headers set by upstream middleware
+  res.removeHeader("Content-Security-Policy");
+  res.removeHeader("X-Frame-Options");
+  res.removeHeader("Cross-Origin-Opener-Policy");
+  res.removeHeader("Cross-Origin-Resource-Policy");
+  res.removeHeader("X-Content-Type-Options");
 
   // Proxy the request to the dev server
   const target = `http://localhost:${port}`;
