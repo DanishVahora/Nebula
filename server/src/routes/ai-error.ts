@@ -58,7 +58,7 @@ router.post(
 
             // 3. Send to Gemini with fallback models
             const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-            const models = ["gemini-2.0-flash", "gemini-1.5-flash"];
+            const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.1-flash-lite"];
             let text = "";
 
             for (const modelName of models) {

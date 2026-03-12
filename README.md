@@ -1,6 +1,6 @@
-# Nebula — Cloud IDE Platform
+# Orbit — Cloud IDE Platform
 
-Nebula is a full-stack browser-based cloud IDE with an integrated classroom/assignment system. It supports real-time code editing, terminal access, live preview, Git workflows, AI-powered code completion (Codeium), and a teacher-student classroom model with auto-graded DSA assignments.
+Orbit is a full-stack browser-based cloud IDE with an integrated classroom/assignment system. It supports real-time code editing, terminal access, live preview, Git workflows, AI-powered error debugging (Google Gemini), and a teacher-student classroom model with auto-graded DSA assignments.
 
 ---
 
@@ -15,7 +15,8 @@ Nebula is a full-stack browser-based cloud IDE with an integrated classroom/assi
 | Terminal | xterm.js + node-pty (real PTY sessions) |
 | Real-time | WebSocket (terminal I/O), Server-Sent Events (provisioning logs) |
 | Auth | Passport.js — Google OAuth 2.0, GitHub OAuth 2.0 |
-| AI | Codeium — inline code completions; Google Gemini — AI-generated assignment content |
+| AI | Google Gemini — AI error debugging, context-aware code fixes, AI-generated assignment content |
+| AST Analysis | @babel/parser — import graph, symbol table, file analysis |
 | Git | simple-git (Git CLI wrapper) |
 | Security | Helmet, AES-256-GCM encryption, JWT (httpOnly cookies) |
 
@@ -24,10 +25,10 @@ Nebula is a full-stack browser-based cloud IDE with an integrated classroom/assi
 ## Project Structure
 
 ```
-Nebula/
+Orbit/
 ├── client/                          # React SPA (Vite)
 │   ├── src/
-│   │   ├── App.tsx                  # Router setup (8 routes)
+│   │   ├── App.tsx                  # Router setup (6 routes)
 │   │   ├── pages/
 │   │   │   ├── Landing.tsx          # Marketing page
 │   │   │   ├── Login.tsx            # OAuth login (Google/GitHub)
@@ -35,44 +36,74 @@ Nebula/
 │   │   │   ├── Dashboard.tsx        # Role-aware redirect
 │   │   │   ├── TeacherDashboard.tsx # Teacher panel (classrooms, assignments, grading)
 │   │   │   ├── StudentDashboard.tsx # Student panel (classrooms, submissions, workspaces)
-│   │   │   └── WorkspaceIDE.tsx     # Full IDE page (editor, terminal, preview, git)
+│   │   │   └── WorkspaceIDE.tsx     # Full IDE page (editor, terminal, preview, git, AI)
 │   │   ├── components/
 │   │   │   ├── ide/                 # IDE components
-│   │   │   │   ├── EditorTabs.tsx       # Monaco editor with multi-tab support
-│   │   │   │   ├── FileExplorer.tsx     # Recursive file tree
-│   │   │   │   ├── TerminalPanel.tsx    # xterm.js multi-terminal
-│   │   │   │   ├── PreviewPanel.tsx     # iframe dev-server preview
-│   │   │   │   ├── GitPanel.tsx         # Stage, commit, push, pull, branch
-│   │   │   │   ├── DiffViewer.tsx       # Side-by-side diff
-│   │   │   │   ├── IDEToolbar.tsx       # Run/stop/format toolbar
-│   │   │   │   ├── CommandPalette.tsx   # Ctrl+Shift+P command palette
-│   │   │   │   ├── QuickOpen.tsx        # Ctrl+P fuzzy file search
-│   │   │   │   └── PortsPanel.tsx       # Detected dev-server ports
+│   │   │   │   ├── EditorTabs.tsx           # Monaco editor with multi-tab support
+│   │   │   │   ├── FileExplorer.tsx         # Recursive file tree
+│   │   │   │   ├── TerminalPanel.tsx        # xterm.js multi-terminal
+│   │   │   │   ├── PreviewPanel.tsx         # iframe dev-server preview
+│   │   │   │   ├── GitPanel.tsx             # Stage, commit, push, pull, branch
+│   │   │   │   ├── DiffViewer.tsx           # Side-by-side diff
+│   │   │   │   ├── IDEToolbar.tsx           # Run/stop/format toolbar
+│   │   │   │   ├── CommandPalette.tsx       # Ctrl+Shift+P command palette
+│   │   │   │   ├── QuickOpen.tsx            # Ctrl+P fuzzy file search
+│   │   │   │   ├── PortsPanel.tsx           # Detected dev-server ports
+│   │   │   │   ├── AIContextPanel.tsx       # AI context preview (what the LLM sees)
+│   │   │   │   └── AIErrorResolverPanel.tsx # AI error debugging panel (Gemini)
 │   │   │   ├── dashboard/           # Dashboard panels
 │   │   │   │   ├── Sidebar.tsx
 │   │   │   │   ├── Topbar.tsx
+│   │   │   │   ├── WelcomeSection.tsx
 │   │   │   │   ├── WorkspacesPanel.tsx
+│   │   │   │   ├── WorkspacesCard.tsx
 │   │   │   │   ├── CreateWorkspaceModal.tsx
 │   │   │   │   ├── TeacherClassroomsPanel.tsx
 │   │   │   │   ├── StudentClassroomsPanel.tsx
+│   │   │   │   ├── ClassroomDetailView.tsx
+│   │   │   │   ├── ClassroomAssignmentsPanel.tsx
 │   │   │   │   ├── TeacherAssignmentsPanel.tsx
 │   │   │   │   ├── StudentAssignmentsPanel.tsx
+│   │   │   │   ├── AssignmentsPanel.tsx
+│   │   │   │   ├── AssignmentsCard.tsx
 │   │   │   │   ├── CreateAssignmentModal.tsx
 │   │   │   │   ├── SubmissionsPanel.tsx
+│   │   │   │   ├── StudentSubmissionsPanel.tsx
+│   │   │   │   ├── ConnectedAccounts.tsx
+│   │   │   │   ├── GitHubConnectCard.tsx
 │   │   │   │   ├── GitHubOverview.tsx
-│   │   │   │   ├── GitHubRepos.tsx
-│   │   │   │   └── ...
+│   │   │   │   └── GitHubRepos.tsx
 │   │   │   ├── auth/
 │   │   │   │   └── ProtectedRoute.tsx   # Auth guard with role checking
+│   │   │   ├── assignment/          # (Reserved for assignment-specific components)
 │   │   │   ├── landing/             # Landing page sections
-│   │   │   └── ui/                  # Animated background components
+│   │   │   │   ├── Hero.tsx             # Navbar + hero section with sparkles
+│   │   │   │   ├── Features.tsx         # BentoGrid feature showcase
+│   │   │   │   ├── IDEShowcase.tsx      # IDE capabilities preview
+│   │   │   │   ├── HowItWorks.tsx       # Step-by-step onboarding guide
+│   │   │   │   ├── Stats.tsx            # Platform metrics (boot time, languages, uptime)
+│   │   │   │   ├── Testimonials.tsx     # User testimonials carousel
+│   │   │   │   ├── CTA.tsx              # Call-to-action with sparkles
+│   │   │   │   └── Footer.tsx           # Footer with links
+│   │   │   └── ui/                  # Animated UI primitives
+│   │   │       ├── background-beams.tsx
+│   │   │       ├── backgrounds.tsx
+│   │   │       ├── bento-grid.tsx
+│   │   │       ├── card-spotlight.tsx
+│   │   │       ├── hover-border-gradient.tsx
+│   │   │       ├── infinite-moving-cards.tsx
+│   │   │       ├── lamp.tsx
+│   │   │       ├── sparkles.tsx
+│   │   │       ├── text-reveal.tsx
+│   │   │       ├── tracing-beam.tsx
+│   │   │       └── wavy-background.tsx
 │   │   ├── contexts/
 │   │   │   ├── AuthContext.tsx       # Global auth state (user, login, logout, role)
 │   │   │   └── ThemeContext.tsx      # Dark/light theme (persisted)
 │   │   └── lib/
 │   │       ├── api.ts               # Axios client with all API namespaces
-│   │       ├── codeium.ts           # Monaco inline completion provider (Codeium)
 │   │       └── utils.ts             # cn() — Tailwind class merging
+│   ├── starters-main/              # Template starter files (copied during provisioning)
 │   └── package.json
 │
 ├── server/                          # Express API server
@@ -93,7 +124,8 @@ Nebula/
 │   │   │   ├── classroom.ts         # CRUD classrooms, join by code
 │   │   │   ├── assignment.ts        # CRUD assignments, start/submit/grade
 │   │   │   ├── assignment-ai.ts     # AI-generate assignment content (Gemini)
-│   │   │   └── ai.ts               # Codeium code completion proxy
+│   │   │   ├── ai-error.ts          # AI error debugging endpoint (Gemini)
+│   │   │   └── context.ts           # Workspace context/indexing API
 │   │   ├── lib/
 │   │   │   ├── terminal-manager.ts  # PTY lifecycle, scrollback buffer (64KB)
 │   │   │   ├── session-manager.ts   # Workspace session state (terminals, ports, UI)
@@ -101,11 +133,17 @@ Nebula/
 │   │   │   ├── workspace-watcher.ts # chokidar fs watcher → WebSocket events
 │   │   │   ├── workspace.ts         # File tree, init files, delete workspace
 │   │   │   ├── provisioner.ts       # Template provisioning (npm install, git clone)
-│   │   │   ├── templates.ts         # 15 workspace templates
+│   │   │   ├── templates.ts         # Workspace templates (16 templates)
 │   │   │   ├── code-runner.ts       # DSA test runner (C++, Python, Java)
 │   │   │   ├── encryption.ts        # AES-256-GCM encrypt/decrypt
 │   │   │   ├── jwt.ts               # JWT sign/verify
-│   │   │   └── prisma.ts            # Prisma client singleton
+│   │   │   ├── prisma.ts            # Prisma client singleton
+│   │   │   └── context/             # AI context engine
+│   │   │       ├── index.ts             # Barrel exports
+│   │   │       ├── ast-parser.ts        # @babel/parser — imports, exports, symbols
+│   │   │       ├── workspace-indexer.ts # File indexing, import graph, symbol table
+│   │   │       ├── context-builder.ts   # Build AI-consumable context from workspace
+│   │   │       └── prompt-builder.ts    # Structure context into LLM prompts
 │   │   └── middleware/
 │   │       ├── auth.ts              # authenticate + requireRole middleware
 │   │       └── preview-fallback.ts  # Root-relative proxy for preview iframes
@@ -240,16 +278,7 @@ Nebula/
 - Minimap, bracket pair colorization, auto-closing brackets/quotes
 - Word wrap, format on paste, smooth scrolling, cursor animations
 - Quick suggestions for keywords, snippets, trigger characters
-- Inline suggest enabled (for AI completions)
-
-**AI Inline Completions (`lib/codeium.ts`):**
-- Registers a `registerInlineCompletionsProvider` on the Monaco instance
-- On each keystroke (400ms debounce), sends the current file context + cursor position to `POST /api/ai/autocomplete`
-- Server proxies to Codeium’s GetCompletions API using the configured API key
-- Response appears as ghost text (greyed-out suggestion) — press Tab to accept
-- Context: last 200 lines before cursor + 50 lines after cursor
-- Cancels previous in-flight requests when the user keeps typing
-- Provider is registered on `onMount` and disposed on component unmount
+- Inline suggest enabled
 
 ---
 
