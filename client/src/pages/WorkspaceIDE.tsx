@@ -10,10 +10,13 @@ import { PreviewPanel } from "@/components/ide/PreviewPanel";
 import { GitPanel } from "@/components/ide/GitPanel";
 import { PortsPanel } from "@/components/ide/PortsPanel";
 import { QuickOpen } from "@/components/ide/QuickOpen";
+import { AIContextPanel } from "@/components/ide/AIContextPanel";
+import { AIErrorResolverPanel } from "@/components/ide/AIErrorResolverPanel";
 import {
   CommandPalette,
   type PaletteCommand,
 } from "@/components/ide/CommandPalette";
+import { aiAPI } from "@/lib/api";
 import {
   Loader2,
   AlertCircle,
@@ -34,6 +37,8 @@ import {
   Download,
   Save,
   Eye,
+  BrainCircuit,
+  Sparkles,
 } from "lucide-react";
 
 export interface FileTab {
@@ -64,7 +69,22 @@ function getLanguageFromPath(filePath: string): string {
   return map[ext] || "plaintext";
 }
 
-type SidebarPanel = "files" | "git" | "search" | "ports";
+type SidebarPanel = "files" | "git" | "search" | "ports" | "ai" | "ai-error";
+
+/** Format an AI error-fix result as a Markdown hover tooltip. */
+function formatHoverMarkdown(data: { explanation: string; suggestedFix: string; correctedCode: string }): string {
+  const parts: string[] = [];
+  parts.push("**\u26A0\uFE0F AI Explanation**");
+  if (data.explanation) parts.push(data.explanation);
+  if (data.suggestedFix) {
+    parts.push("**Suggested Fix:**");
+    parts.push(data.suggestedFix);
+  }
+  if (data.correctedCode) {
+    parts.push("```\n" + data.correctedCode + "\n```");
+  }
+  return parts.join("\n\n");
+}
 
 export default function WorkspaceIDE() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -96,6 +116,11 @@ export default function WorkspaceIDE() {
   // Command Palette (Ctrl+Shift+P)
   const [showCommandPalette, setShowCommandPalette] = useState(false);
 
+  // Monaco editor refs for hover provider
+  const monacoInstanceRef = useRef<any>(null);
+  const hoverProviderRef = useRef<any>(null);
+  const hoverCacheRef = useRef<Map<string, { explanation: string; suggestedFix: string; correctedCode: string }>>(new Map());
+
 
 
   // Git
@@ -118,6 +143,84 @@ export default function WorkspaceIDE() {
 
   // Resizing terminal
   const isResizingRef = useRef(false);
+
+  // ── Register Monaco hover provider for AI error explanations ────
+  const handleEditorMount = useCallback((_editor: any, monaco: any) => {
+    monacoInstanceRef.current = monaco;
+
+    // Dispose previous provider if re-mounted
+    if (hoverProviderRef.current) {
+      hoverProviderRef.current.dispose();
+    }
+
+    // Debounce helper: only one in-flight request at a time
+    let pending: AbortController | null = null;
+
+    hoverProviderRef.current = monaco.languages.registerHoverProvider("*", {
+      provideHover: async (model: any, position: any) => {
+        if (!workspaceId) return null;
+
+        // Check if there is a marker (error/warning) at this position
+        const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+        const marker = markers.find(
+          (m: any) =>
+            m.severity === monaco.MarkerSeverity.Error &&
+            position.lineNumber >= m.startLineNumber &&
+            position.lineNumber <= m.endLineNumber &&
+            (position.lineNumber > m.startLineNumber || position.column >= m.startColumn) &&
+            (position.lineNumber < m.endLineNumber || position.column <= m.endColumn)
+        );
+
+        if (!marker) return null;
+
+        const cacheKey = `${model.uri.path}:${marker.startLineNumber}:${marker.message}`;
+        const cached = hoverCacheRef.current.get(cacheKey);
+        if (cached) {
+          return {
+            range: new monaco.Range(
+              marker.startLineNumber, marker.startColumn,
+              marker.endLineNumber, marker.endColumn
+            ),
+            contents: [
+              { value: formatHoverMarkdown(cached) },
+            ],
+          };
+        }
+
+        // Cancel any previous in-flight request
+        if (pending) pending.abort();
+        pending = new AbortController();
+
+        try {
+          // Derive relative file path from model URI
+          const filePath = model.uri.path.replace(/^\//, "");
+          const res = await aiAPI.errorFix({
+            workspaceId: workspaceId!,
+            filePath,
+            errorLine: marker.startLineNumber,
+            errorMessage: marker.message,
+          });
+
+          const data = res.data;
+          hoverCacheRef.current.set(cacheKey, data);
+
+          return {
+            range: new monaco.Range(
+              marker.startLineNumber, marker.startColumn,
+              marker.endLineNumber, marker.endColumn
+            ),
+            contents: [
+              { value: formatHoverMarkdown(data) },
+            ],
+          };
+        } catch {
+          return null;
+        } finally {
+          pending = null;
+        }
+      },
+    });
+  }, [workspaceId]);
 
   // ── Handle dev-server port detection (from backend WS event) ────
   const handlePortDetected = useCallback((port: number) => {
@@ -476,6 +579,15 @@ export default function WorkspaceIDE() {
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab, saveFile]);
 
+  // ── Dispose hover provider on unmount ───────────────────
+  useEffect(() => {
+    return () => {
+      if (hoverProviderRef.current) {
+        hoverProviderRef.current.dispose();
+      }
+    };
+  }, []);
+
   // ── Derived state (must be above early returns) ─────────
   const activeFileTab = diffState ? null : (tabs.find((t) => t.path === activeTab) || null);
   const isWebTemplate = ["static", "react", "react-ts", "nextjs", "vite-react-ts", "vue", "angular"].includes(workspace?.template || "");
@@ -550,7 +662,7 @@ export default function WorkspaceIDE() {
         action: () => {
           setShowTerminal(true);
           if (workspaceId) {
-            workspaceAPI.run(workspaceId, "npm run dev").catch(() => {});
+            workspaceAPI.run(workspaceId, "npm run dev").catch(() => { });
           }
         },
       },
@@ -562,9 +674,9 @@ export default function WorkspaceIDE() {
         action: () => {
           setShowTerminal(true);
           if (workspaceId) {
-            workspaceAPI.stop(workspaceId).catch(() => {});
+            workspaceAPI.stop(workspaceId).catch(() => { });
             setTimeout(() => {
-              workspaceAPI.run(workspaceId!, "npm run dev").catch(() => {});
+              workspaceAPI.run(workspaceId!, "npm run dev").catch(() => { });
             }, 500);
           }
         },
@@ -578,7 +690,7 @@ export default function WorkspaceIDE() {
           const pkg = prompt("Enter package name to install:");
           if (pkg && workspaceId) {
             setShowTerminal(true);
-            workspaceAPI.exec(workspaceId, `npm install ${pkg}`).catch(() => {});
+            workspaceAPI.exec(workspaceId, `npm install ${pkg}`).catch(() => { });
           }
         },
       },
@@ -752,12 +864,26 @@ export default function WorkspaceIDE() {
             title="Source Control"
           />
 
+          <ActivityBarButton
+            icon={<BrainCircuit className="w-[22px] h-[22px]" />}
+            active={activeSidebarPanel === "ai" && showSidebar}
+            onClick={() => toggleSidebarPanel("ai")}
+            title="AI Context"
+          />
+
+          <ActivityBarButton
+            icon={<Sparkles className="w-[22px] h-[22px]" />}
+            active={activeSidebarPanel === "ai-error" && showSidebar}
+            onClick={() => toggleSidebarPanel("ai-error")}
+            title="AI Error Resolver"
+          />
+
           <div className="flex-1" />
 
           <ActivityBarButton
             icon={<Settings className="w-[20px] h-[20px]" />}
             active={false}
-            onClick={() => {}}
+            onClick={() => { }}
             title="Settings"
           />
         </div>
@@ -828,6 +954,19 @@ export default function WorkspaceIDE() {
                 </div>
               </div>
             )}
+            {activeSidebarPanel === "ai" && (
+              <AIContextPanel
+                workspaceId={workspaceId!}
+                activeFile={activeTab}
+              />
+            )}
+            {activeSidebarPanel === "ai-error" && (
+              <AIErrorResolverPanel
+                workspaceId={workspaceId!}
+                activeFile={activeTab}
+                onOpenFile={openFile}
+              />
+            )}
           </div>
         )}
 
@@ -860,6 +999,7 @@ export default function WorkspaceIDE() {
                   onContentChange={updateFileContent}
                   onSave={saveFile}
                   activeFileTab={activeFileTab}
+                  onEditorMount={handleEditorMount}
                 />
               )}
             </div>
@@ -964,11 +1104,10 @@ function ActivityBarButton({
     <button
       onClick={onClick}
       title={title}
-      className={`w-12 h-12 flex items-center justify-center transition-colors relative ${
-        active
-          ? "text-white"
-          : "text-[#858585] hover:text-white"
-      }`}
+      className={`w-12 h-12 flex items-center justify-center transition-colors relative ${active
+        ? "text-white"
+        : "text-[#858585] hover:text-white"
+        }`}
     >
       {active && (
         <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-white rounded-r" />

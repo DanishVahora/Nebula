@@ -12,6 +12,7 @@ interface EditorTabsProps {
   onContentChange: (path: string, content: string) => void;
   onSave: (path: string) => void;
   activeFileTab: FileTab | null;
+  onEditorMount?: (editor: any, monaco: any) => void;
 }
 
 function getFileIconColor(name: string): string {
@@ -25,7 +26,7 @@ function getFileIconColor(name: string): string {
 }
 
 export function EditorTabs({
-  tabs, activeTab, onTabClick, onTabClose, onContentChange, onSave, activeFileTab,
+  tabs, activeTab, onTabClick, onTabClose, onContentChange, onSave, activeFileTab, onEditorMount,
 }: EditorTabsProps) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -35,6 +36,7 @@ export function EditorTabs({
     editorRef.current = editor;
     monacoRef.current = monaco;
     editor.addCommand(2097, () => { if (activeTab) onSave(activeTab); });
+    onEditorMount?.(editor, monaco);
   };
 
   // Update editor content and language when active tab changes, without remounting
@@ -76,11 +78,10 @@ export function EditorTabs({
             return (
               <div
                 key={tab.path}
-                className={`group relative flex items-center gap-1.5 px-3 h-[36px] cursor-pointer border-r border-[#1e1e1e] min-w-0 max-w-[180px] transition-colors ${
-                  isActive
+                className={`group relative flex items-center gap-1.5 px-3 h-[36px] cursor-pointer border-r border-[#1e1e1e] min-w-0 max-w-[180px] transition-colors ${isActive
                     ? "bg-[#1e1e1e] text-[#d4d4d4]"
                     : "bg-[#2d2d2d] text-[#858585] hover:bg-[#2d2d2d]/80"
-                }`}
+                  }`}
                 onClick={() => onTabClick(tab.path)}
               >
                 {isActive && (

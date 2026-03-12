@@ -18,6 +18,8 @@ import previewRoutes from "./routes/preview";
 import classroomRoutes from "./routes/classroom";
 import assignmentRoutes from "./routes/assignment";
 import assignmentAIRoutes from "./routes/assignment-ai";
+import aiErrorRoutes from "./routes/ai-error";
+import contextRoutes from "./routes/context";
 import { previewFallbackProxy } from "./middleware/preview-fallback";
 import { sessionManager } from "./lib/session-manager";
 import httpProxy from "http-proxy";
@@ -83,6 +85,8 @@ app.use("/api/preview", previewRoutes);
 app.use("/api/classrooms", classroomRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/assignments/ai", assignmentAIRoutes);
+app.use("/api/ai", aiErrorRoutes);
+app.use("/api/workspace", contextRoutes);
 
 // ── Health check ───────────────────────────────────────
 app.get("/api/health", (_req, res) => {

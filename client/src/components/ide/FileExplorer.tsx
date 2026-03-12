@@ -92,12 +92,18 @@ function FileTreeItem({
   return (
     <div>
       <div
-        className={`group flex items-center gap-1 px-2 py-[3px] cursor-pointer transition-colors ${
-          isActive
+        className={`group flex items-center gap-1 px-2 py-[3px] cursor-pointer transition-colors ${isActive
             ? "bg-[#2d2d2d] text-[#d4d4d4]"
             : "text-[#cccccc] hover:bg-[#2a2d2e]"
-        }`}
+          }`}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        draggable={!isDir}
+        onDragStart={(e) => {
+          if (!isDir) {
+            e.dataTransfer.setData("text/plain", entry.path);
+            e.dataTransfer.effectAllowed = "copy";
+          }
+        }}
         onClick={handleClick}
         onMouseEnter={() => setShowActions(true)}
         onMouseLeave={() => setShowActions(false)}

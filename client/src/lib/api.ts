@@ -218,6 +218,35 @@ export const workspaceAPI = {
     showTerminal?: boolean;
     sidebarPanel?: string;
   }) => api.put(`/workspace/${id}/session/ui-state`, state),
+
+  // Context / AI debugging
+  indexContext: (id: string) =>
+    api.post(`/workspace/${id}/context/index`),
+  getContext: (id: string) =>
+    api.get(`/workspace/${id}/context`),
+  buildContext: (id: string, file: string, errorLine: number) =>
+    api.post<{
+      projectStructure: string[];
+      dependencies: string[];
+      currentFile: { path: string; code: string } | null;
+      relatedFiles: { path: string; code: string }[];
+      errorLine: number;
+    }>(`/workspace/${id}/context/build`, { file, errorLine }),
+};
+
+// AI error-fix endpoint
+export const aiAPI = {
+  errorFix: (data: {
+    workspaceId: string;
+    filePath: string;
+    errorLine: number;
+    errorMessage: string;
+  }) =>
+    api.post<{
+      explanation: string;
+      suggestedFix: string;
+      correctedCode: string;
+    }>("/ai/error-fix", data),
 };
 
 export default api;

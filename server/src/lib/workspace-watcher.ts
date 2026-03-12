@@ -2,6 +2,7 @@ import chokidar, { FSWatcher } from "chokidar";
 import path from "path";
 import { EventEmitter } from "events";
 import { getWorkspacePath } from "./workspace";
+import { invalidateIndex } from "./context/workspace-indexer";
 
 export type FsEventType = "add" | "change" | "unlink" | "addDir" | "unlinkDir";
 
@@ -23,6 +24,9 @@ export interface FsChangeEvent {
 class WorkspaceWatcher extends EventEmitter {
   /** Map<workspaceId, FSWatcher> */
   private watchers = new Map<string, FSWatcher>();
+
+  /** Debounce timers for index invalidation per workspace */
+  private invalidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   /** Directories/patterns to ignore */
   private static IGNORED = [
@@ -82,6 +86,9 @@ class WorkspaceWatcher extends EventEmitter {
       };
 
       this.emit("fs-change", payload);
+
+      // Debounced invalidation of the workspace context index
+      this.scheduleIndexInvalidation(workspaceId);
     };
 
     watcher
@@ -96,6 +103,22 @@ class WorkspaceWatcher extends EventEmitter {
       });
 
     this.watchers.set(workspaceId, watcher);
+  }
+
+  /**
+   * Debounce index invalidation so rapid file changes (e.g. npm install)
+   * only trigger one invalidation after things settle down (2 seconds).
+   */
+  private scheduleIndexInvalidation(workspaceId: string): void {
+    const existing = this.invalidationTimers.get(workspaceId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      invalidateIndex(workspaceId);
+      this.invalidationTimers.delete(workspaceId);
+    }, 2000);
+
+    this.invalidationTimers.set(workspaceId, timer);
   }
 
   /** Stop watching a workspace and release resources */
