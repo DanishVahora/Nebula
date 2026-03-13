@@ -149,3 +149,15 @@ model ClassroomMember {
 
   @@unique([classroomId, userId])
 }
+
+model Deployment {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  workspaceId String
+  userId      String
+  containerId String
+  imageTag    String
+  port        Int
+  url         String
+  status      String
+  createdAt   DateTime @default(now())
+}

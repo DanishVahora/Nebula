@@ -433,37 +433,61 @@ Orbit/
 
 ---
 
-### 10. AI Code Completion (Codeium)
+### 10. AI Error Debugging (Gemini)
 
 **Architecture:**
 ```
-User types in editor
-        ↓ (400ms debounce)
-Client: POST /api/ai/autocomplete
-  body: { prefix, suffix, language, cursorLine, cursorColumn }
+User encounters error in IDE
         ↓
-Server: Proxy to Codeium GetCompletions API
-  Uses CODEIUM_API_KEY from environment
+Client: Paste error/stack trace or click "Debug with AI"
         ↓
-Server: Return { completions: [{ text: "..." }] }
+AIErrorResolverPanel: Parse error → extract file path & line
         ↓
-Client: Display as ghost text (Monaco inline suggestion)
+Client: POST /api/ai/error-fix
+  body: { workspaceId, filePath, errorLine, errorMessage }
         ↓
-User presses Tab to accept
+Server: Build project context (context-builder.ts)
+  → AST analysis, import graph, related files
+        ↓
+Server: Generate structured prompt (prompt-builder.ts)
+        ↓
+Server: Send to Google Gemini API
+  Fallback: gemini-2.5-flash → gemini-2.5-flash-lite → gemini-3.1-flash-lite
+        ↓
+Server: Parse response → { explanation, suggestedFix, correctedCode }
+        ↓
+Client: Display step-by-step results
 ```
 
-**Backend (`routes/ai.ts`):**
-- Authenticated endpoint
-- Proxies to Codeium’s `GetCompletions` via Connect protocol (JSON over HTTP)
-- Maps Monaco language IDs to Codeium language enum
-- Uses `CODEIUM_API_KEY` from environment
+**Backend (`routes/ai-error.ts`):**
+- `POST /api/ai/error-fix` — Accepts error details, builds context, queries Gemini
+- Response parsed into structured sections: explanation, suggested fix, corrected code
+- Model fallback chain for reliability
 
-**Frontend (`lib/codeium.ts`):**
-- `registerCodeiumCompletionProvider(monaco)` — registers `InlineCompletionsProvider`
-- 400ms debounce timer (cleared on each keystroke)
-- Context: last 200 lines before cursor + 50 lines after
-- AbortController cancels previous requests when user keeps typing
-- Returns disposable for cleanup
+**AI Context Engine (`lib/context/`):**
+- `ast-parser.ts` — @babel/parser analyzes JS/TS files; extracts imports, exports, symbols (functions, classes, variables, interfaces, enums)
+- `workspace-indexer.ts` — Indexes all workspace files; builds import graph, symbol table; 5-minute cache with auto-refresh
+- `context-builder.ts` — Builds AI-consumable context: error file with snippet (±25 lines), related files via import graph (up to 5 files, 2 levels deep), project summary
+- `prompt-builder.ts` — Structures context + error into a Markdown prompt for the LLM
+
+**Context Routes (`routes/context.ts`):**
+- `POST /api/workspace/:id/context/index` → Trigger full workspace re-index
+- `GET /api/workspace/:id/context` → Get workspace context summary (cached or fresh)
+- `DELETE /api/workspace/:id/context` → Invalidate cached index
+- `POST /api/workspace/:id/context/error` → Build context for a specific error
+- `POST /api/workspace/:id/context/query` → Build context for a general AI query
+- `POST /api/workspace/:id/context/build` → Lightweight context for AI debugging
+
+**Frontend (`AIErrorResolverPanel.tsx`):**
+- Paste error/stack trace, attach files, drag-and-drop context
+- Auto-parses error traces to extract file path and line number
+- Step-by-step progress: building context → generating prompt → sending to AI → parsing response
+- Results: explanation (blue), suggested fix (yellow), corrected code (collapsible)
+
+**Frontend (`AIContextPanel.tsx`):**
+- Preview what the AI will receive for debugging
+- Collapsible sections: current file, related files, project structure, dependencies
+- Input error line number to build targeted context
 
 ---
 
@@ -566,7 +590,13 @@ User presses Tab to accept
 | GET | `/api/assignments/my/submissions` | Yes | My submissions |
 | DELETE | `/api/assignments/:id` | Yes | Delete assignment |
 | POST | `/api/assignments/ai/generate` | Yes | AI generate assignment |
-| POST | `/api/ai/autocomplete` | Yes | Codeium code completion |
+| POST | `/api/ai/error-fix` | Yes | AI error debugging (Gemini) |
+| POST | `/api/workspace/:id/context/index` | Yes | Trigger workspace re-index |
+| GET | `/api/workspace/:id/context` | Yes | Get workspace context summary |
+| DELETE | `/api/workspace/:id/context` | Yes | Invalidate cached index |
+| POST | `/api/workspace/:id/context/error` | Yes | Build context for error |
+| POST | `/api/workspace/:id/context/query` | Yes | Build context for AI query |
+| POST | `/api/workspace/:id/context/build` | Yes | Lightweight context build |
 | WS | `/ws/terminal/:wid/:tid` | Token | Terminal WebSocket |
 | GET | `/api/health` | No | Health check |
 
@@ -592,11 +622,9 @@ GOOGLE_CLIENT_SECRET=<from-google-cloud-console>
 GITHUB_CLIENT_ID=<from-github-developer-settings>
 GITHUB_CLIENT_SECRET=<from-github-developer-settings>
 
-DATABASE_URL=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/Nebula
+DATABASE_URL=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/Orbit
 
 GEMINI_API_KEY=<google-gemini-api-key>
-
-CODEIUM_API_KEY=<codeium-api-key>
 ```
 
 ---
@@ -641,15 +669,20 @@ cd client && npm run dev    # Vite on :5173
 | Template | Language | Description |
 |---|---|---|
 | blank | — | Empty workspace |
-| dsa | C++/Python/Java | DSA problem solving |
-| static | HTML/CSS/JS | Static website |
-| react | JavaScript | React (Vite) |
-| nextjs | JavaScript | Next.js |
-| vue | JavaScript | Vue.js (Vite) |
-| angular | TypeScript | Angular |
-| express | JavaScript | Express.js API |
-| typescript | TypeScript | TypeScript project |
-| + 6 more | Various | Additional templates |
+| dsa | C++/Python/Java/JS | DSA problem solving (competitive programming) |
+| static | HTML/CSS/JS | Static website (servor live reload) |
+| static-web | HTML/CSS/JS | Classic HTML, CSS & JavaScript website |
+| node | JavaScript | Node.js starter project |
+| nodejs | JavaScript | Node.js API (Express) |
+| react | TypeScript | React + Vite |
+| react-ts | TypeScript | React + TypeScript (CRA) |
+| vite-react-ts | TypeScript | React + Vite + TypeScript + Tailwind |
+| nextjs | TypeScript | Next.js full-stack framework |
+| vue | JavaScript | Vue 3 (Vue CLI) |
+| angular | TypeScript | Angular framework |
+| express | JavaScript | Express.js REST API |
+| typescript | TypeScript | TypeScript starter project |
+| fullstack | TypeScript | React frontend + Express backend |
 
 ---
 

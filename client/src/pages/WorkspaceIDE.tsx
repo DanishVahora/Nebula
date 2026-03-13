@@ -12,6 +12,7 @@ import { PortsPanel } from "@/components/ide/PortsPanel";
 import { QuickOpen } from "@/components/ide/QuickOpen";
 import { AIContextPanel } from "@/components/ide/AIContextPanel";
 import { AIErrorResolverPanel } from "@/components/ide/AIErrorResolverPanel";
+import { DeploymentsPanel } from "@/components/ide/DeploymentsPanel";
 import {
   CommandPalette,
   type PaletteCommand,
@@ -39,6 +40,7 @@ import {
   Eye,
   BrainCircuit,
   Sparkles,
+  Rocket,
 } from "lucide-react";
 
 export interface FileTab {
@@ -69,7 +71,7 @@ function getLanguageFromPath(filePath: string): string {
   return map[ext] || "plaintext";
 }
 
-type SidebarPanel = "files" | "git" | "search" | "ports" | "ai" | "ai-error";
+type SidebarPanel = "files" | "git" | "search" | "ports" | "ai" | "ai-error" | "deployments";
 
 /** Format an AI error-fix result as a Markdown hover tooltip. */
 function formatHoverMarkdown(data: { explanation: string; suggestedFix: string; correctedCode: string }): string {
@@ -878,6 +880,13 @@ export default function WorkspaceIDE() {
             title="AI Error Resolver"
           />
 
+          <ActivityBarButton
+            icon={<Rocket className="w-[22px] h-[22px]" />}
+            active={activeSidebarPanel === "deployments" && showSidebar}
+            onClick={() => toggleSidebarPanel("deployments")}
+            title="Deployments"
+          />
+
           <div className="flex-1" />
 
           <ActivityBarButton
@@ -966,6 +975,9 @@ export default function WorkspaceIDE() {
                 activeFile={activeTab}
                 onOpenFile={openFile}
               />
+            )}
+            {activeSidebarPanel === "deployments" && (
+              <DeploymentsPanel />
             )}
           </div>
         )}

@@ -20,6 +20,9 @@ import assignmentRoutes from "./routes/assignment";
 import assignmentAIRoutes from "./routes/assignment-ai";
 import aiErrorRoutes from "./routes/ai-error";
 import contextRoutes from "./routes/context";
+import deployRoutes from "./routes/deploy";
+import deployStreamRoutes from "./routes/deploy-stream";
+import deploymentRoutes from "./routes/deployments";
 import { previewFallbackProxy } from "./middleware/preview-fallback";
 import { sessionManager } from "./lib/session-manager";
 import httpProxy from "http-proxy";
@@ -87,6 +90,9 @@ app.use("/api/assignments", assignmentRoutes);
 app.use("/api/assignments/ai", assignmentAIRoutes);
 app.use("/api/ai", aiErrorRoutes);
 app.use("/api/workspace", contextRoutes);
+app.use("/api/deploy", deployStreamRoutes);
+app.use("/api/deploy", deployRoutes);
+app.use("/api/deployments", deploymentRoutes);
 
 // ── Health check ───────────────────────────────────────
 app.get("/api/health", (_req, res) => {
