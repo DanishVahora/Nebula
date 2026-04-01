@@ -1,190 +1,220 @@
 import { Router, Request, Response } from "express";
 import { authenticate, requireRole } from "../middleware/auth";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { env } from "../config/env";
 
 const router = Router();
 
-// ── DSA starter code templates ─────────────────────────
-const DSA_STARTERS: Record<string, (fnName: string) => string> = {
-  cpp: (fn) => `#include <bits/stdc++.h>
-using namespace std;
+type Difficulty = "EASY" | "MEDIUM" | "HARD";
+type Language = "cpp" | "python" | "java";
 
-// TODO: Implement ${fn}
-int main() {
-    ios_base::sync_with_stdio(false);
-    cin.tie(NULL);
-
-    // Read input and call your solution
-    
-    return 0;
-}
-`,
-  python: (fn) => `import sys
-from collections import defaultdict, deque
-
-def ${fn}():
-    # TODO: Implement your solution
-    pass
-
-if __name__ == "__main__":
-    ${fn}()
-`,
-  java: (fn) => `import java.util.*;
-import java.io.*;
-
-public class Main {
-    // TODO: Implement ${fn}
-    public static void main(String[] args) {
-        Scanner sc = new Scanner(System.in);
-        
-    }
-}
-`,
+type GeneratedProblem = {
+  title: string;
+  description: string;
+  constraints: string;
+  examples: Array<{ input: string; output: string; explanation: string }>;
+  starterCode: Record<Language, string>;
+  testcases: Array<{
+    input: string;
+    expectedOutput: string;
+    isHidden: boolean;
+    weight: number;
+  }>;
 };
 
-// ── WEB_DEV description templates ──────────────────────
-const WEBDEV_DESCRIPTIONS: Record<string, string> = {
-  react: `## Requirements
+const MODEL_CHAIN = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-3.1-flash-lite",
+];
 
-### Features
-- [ ] Feature 1: Description
-- [ ] Feature 2: Description
-- [ ] Feature 3: Description
+const DIFFICULTY_VALUES: Difficulty[] = ["EASY", "MEDIUM", "HARD"];
+const LANGUAGE_VALUES: Language[] = ["cpp", "python", "java"];
 
-### Technical Requirements
-- Use React functional components with hooks
-- Implement proper state management
-- Ensure responsive design with CSS/Tailwind
-- Handle loading and error states
+function buildPrompt(topic: string, difficulty: Difficulty, language: Language) {
+  return [
+    "You are generating a DSA coding assignment in strict JSON format.",
+    "Return ONLY valid JSON. Do not include markdown code fences.",
+    "The JSON must contain exactly these top-level keys:",
+    "title, description, constraints, examples, starterCode, testcases",
+    "",
+    "Rules:",
+    `- Topic focus: ${topic}`,
+    `- Difficulty: ${difficulty}`,
+    `- Preferred language for examples and style: ${language}`,
+    "- description should be clear and LeetCode-style.",
+    "- constraints should be concise (multi-line string allowed).",
+    "- examples must be an array of objects with keys: input, output, explanation.",
+    "- starterCode must be an object with keys: cpp, python, java.",
+    "- testcases must be an array of at least 6 items.",
+    "- Include both visible and hidden testcases.",
+    "- Each testcase item must have keys: input, expectedOutput, isHidden, weight.",
+    "- Ensure at least 2 hidden testcases.",
+    "- weight must be positive integer.",
+    "- expectedOutput must exactly match output format for the input.",
+    "",
+    "Schema reference:",
+    JSON.stringify(
+      {
+        title: "Two Sum",
+        description: "Given an array ...",
+        constraints: "1 <= n <= 1e5\\n-1e9 <= arr[i] <= 1e9",
+        examples: [{ input: "4\\n2 7 11 15\\n9", output: "0 1", explanation: "arr[0]+arr[1]=9" }],
+        starterCode: {
+          cpp: "#include <bits/stdc++.h>\\nusing namespace std;\\nint main(){return 0;}",
+          python: "def solve():\\n    pass\\n\\nif __name__ == '__main__':\\n    solve()",
+          java: "public class Main { public static void main(String[] args) {} }",
+        },
+        testcases: [
+          { input: "sample input", expectedOutput: "sample output", isHidden: false, weight: 1 },
+          { input: "hidden input", expectedOutput: "hidden output", isHidden: true, weight: 2 },
+        ],
+      },
+      null,
+      2
+    ),
+  ].join("\n");
+}
 
-### Bonus Points
-- Clean code with meaningful variable names
-- Component reusability
-- Proper TypeScript types`,
+function extractJsonBlock(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("```")) {
+    const withoutFence = trimmed.replace(/^```[a-zA-Z]*\s*/, "").replace(/```$/, "").trim();
+    return withoutFence;
+  }
 
-  nextjs: `## Requirements
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1);
+  }
 
-### Features
-- [ ] Feature 1: Description
-- [ ] Feature 2: Description
-- [ ] Feature 3: Description
+  return trimmed;
+}
 
-### Technical Requirements
-- Use Next.js App Router
-- Implement server and client components appropriately
-- Add API routes where needed
-- Ensure responsive design
+function normalizeProblem(raw: any): GeneratedProblem {
+  const examples = Array.isArray(raw?.examples)
+    ? raw.examples
+        .filter((x: any) => x && typeof x === "object")
+        .map((x: any) => ({
+          input: String(x.input ?? "").trim(),
+          output: String(x.output ?? "").trim(),
+          explanation: String(x.explanation ?? "").trim(),
+        }))
+    : [];
 
-### Bonus Points
-- SSR/SSG optimization
-- Error boundaries
-- TypeScript throughout`,
-};
+  const starterCode: Record<Language, string> = {
+    cpp: String(raw?.starterCode?.cpp ?? "").trim(),
+    python: String(raw?.starterCode?.python ?? "").trim(),
+    java: String(raw?.starterCode?.java ?? "").trim(),
+  };
 
-// ── Generate assignment description & starter code ─────
-router.post(
-  "/generate",
-  authenticate,
-  requireRole("TEACHER"),
-  async (req: Request, res: Response) => {
-    try {
-      const { type, topic, difficulty, language, template } = req.body;
+  const testcases = Array.isArray(raw?.testcases)
+    ? raw.testcases
+        .filter((x: any) => x && typeof x === "object")
+        .map((x: any) => ({
+          input: String(x.input ?? "").trim(),
+          expectedOutput: String(x.expectedOutput ?? "").trim(),
+          isHidden: Boolean(x.isHidden),
+          weight: Math.max(1, Number.isFinite(Number(x.weight)) ? Math.round(Number(x.weight)) : 1),
+        }))
+    : [];
 
-      if (!type || !topic?.trim()) {
-        res.status(400).json({ error: "type and topic are required" });
-        return;
-      }
+  const normalized: GeneratedProblem = {
+    title: String(raw?.title ?? "").trim(),
+    description: String(raw?.description ?? "").trim(),
+    constraints: String(raw?.constraints ?? "").trim(),
+    examples,
+    starterCode,
+    testcases,
+  };
 
-      if (type === "DSA") {
-        const lang = language || "cpp";
-        const fnName = topic.trim().replace(/\s+/g, "_").toLowerCase();
-        const starterCode = DSA_STARTERS[lang]?.(fnName) || DSA_STARTERS.cpp(fnName);
+  if (!normalized.title || !normalized.description || !normalized.constraints) {
+    throw new Error("Missing required text fields in model output");
+  }
 
-        const description = generateDSADescription(topic.trim(), difficulty || "MEDIUM");
+  if (!normalized.starterCode.cpp || !normalized.starterCode.python || !normalized.starterCode.java) {
+    throw new Error("Missing starter code for one or more languages");
+  }
 
-        const sampleTestCases = [
-          { input: "// Add sample input", expectedOutput: "// Add expected output", weight: 1, isHidden: false },
-          { input: "// Add hidden test input", expectedOutput: "// Add expected output", weight: 2, isHidden: true },
-        ];
+  if (normalized.testcases.length < 6) {
+    throw new Error("Generated testcases are insufficient");
+  }
 
-        res.json({
-          title: topic.trim(),
-          description,
-          starterCode: { [`main.${getExtension(lang)}`]: starterCode },
-          testCases: sampleTestCases,
-        });
-        return;
-      }
+  if (normalized.testcases.filter((x) => x.isHidden).length < 2) {
+    throw new Error("Generated hidden testcases are insufficient");
+  }
 
-      if (type === "WEB_DEV") {
-        const tmpl = template || "react";
-        const description = WEBDEV_DESCRIPTIONS[tmpl] || WEBDEV_DESCRIPTIONS.react;
+  return normalized;
+}
 
-        const fullDesc = `# ${topic.trim()}\n\n${description}`;
+async function generateWithModel(
+  genAI: GoogleGenerativeAI,
+  modelName: string,
+  prompt: string
+): Promise<GeneratedProblem> {
+  const model = genAI.getGenerativeModel({ model: modelName });
+  const response = await model.generateContent(prompt);
+  const text = response.response.text();
+  const json = extractJsonBlock(text);
+  const parsed = JSON.parse(json);
+  return normalizeProblem(parsed);
+}
 
-        res.json({
-          title: topic.trim(),
-          description: fullDesc,
-          starterCode: null, // Will use template defaults
-          testCases: [],
-        });
-        return;
-      }
+router.post("/generate", authenticate, requireRole("TEACHER"), async (req: Request, res: Response) => {
+  try {
+    const topic = String(req.body?.topic ?? "").trim();
+    const difficulty = String(req.body?.difficulty ?? "").trim().toUpperCase() as Difficulty;
+    const language = String(req.body?.language ?? "").trim().toLowerCase() as Language;
 
-      res.status(400).json({ error: "Invalid type" });
-    } catch (error) {
-      console.error("AI generate error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    if (!topic) {
+      res.status(400).json({ error: "topic is required" });
+      return;
     }
+
+    if (!DIFFICULTY_VALUES.includes(difficulty)) {
+      res.status(400).json({ error: "difficulty must be EASY, MEDIUM or HARD" });
+      return;
+    }
+
+    if (!LANGUAGE_VALUES.includes(language)) {
+      res.status(400).json({ error: "language must be cpp, python or java" });
+      return;
+    }
+
+    if (!env.GEMINI_API_KEY) {
+      res.status(500).json({ error: "Gemini API key is not configured" });
+      return;
+    }
+
+    const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
+    const prompt = buildPrompt(topic, difficulty, language);
+
+    const parseErrors: string[] = [];
+    for (const modelName of MODEL_CHAIN) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const generated = await generateWithModel(genAI, modelName, prompt);
+          res.json({
+            model: modelName,
+            generated,
+          });
+          return;
+        } catch (error: any) {
+          const msg = error?.message || "Unknown generation error";
+          parseErrors.push(`${modelName}#${attempt + 1}: ${msg}`);
+        }
+      }
+    }
+
+    res.status(502).json({
+      error: "Failed to generate valid assignment JSON from Gemini",
+      details: parseErrors,
+    });
+  } catch (error) {
+    console.error("AI generate error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
-);
-
-function getExtension(lang: string): string {
-  switch (lang) {
-    case "cpp": return "cpp";
-    case "python": return "py";
-    case "java": return "java";
-    default: return "txt";
-  }
-}
-
-function generateDSADescription(topic: string, difficulty: string): string {
-  const diffLabel = difficulty === "EASY" ? "Easy" : difficulty === "HARD" ? "Hard" : "Medium";
-  return `# ${topic}
-
-**Difficulty:** ${diffLabel}
-
-## Problem Statement
-Implement a solution for: **${topic}**
-
-## Input Format
-Describe the input format here.
-
-## Output Format
-Describe the expected output format here.
-
-## Constraints
-- Add constraints here
-
-## Examples
-
-### Example 1
-\`\`\`
-Input: 
-Output: 
-Explanation: 
-\`\`\`
-
-### Example 2
-\`\`\`
-Input: 
-Output: 
-Explanation: 
-\`\`\`
-
-## Notes
-- Consider edge cases
-- Optimize for time and space complexity
-`;
-}
+});
 
 export default router;

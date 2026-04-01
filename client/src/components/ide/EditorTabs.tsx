@@ -13,6 +13,7 @@ interface EditorTabsProps {
   onSave: (path: string) => void;
   activeFileTab: FileTab | null;
   onEditorMount?: (editor: any, monaco: any) => void;
+  isReadOnly?: boolean;
 }
 
 function getFileIconColor(name: string): string {
@@ -26,7 +27,7 @@ function getFileIconColor(name: string): string {
 }
 
 export function EditorTabs({
-  tabs, activeTab, onTabClick, onTabClose, onContentChange, onSave, activeFileTab, onEditorMount,
+  tabs, activeTab, onTabClick, onTabClose, onContentChange, onSave, activeFileTab, onEditorMount, isReadOnly,
 }: EditorTabsProps) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -57,6 +58,11 @@ export function EditorTabs({
     }
     isUpdatingRef.current = false;
   }, [activeFileTab?.path, activeFileTab?.language]);
+
+  useEffect(() => {
+    if (!editorRef.current) return;
+    editorRef.current.updateOptions({ readOnly: !!isReadOnly });
+  }, [isReadOnly, activeFileTab?.path]);
 
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
@@ -115,6 +121,7 @@ export function EditorTabs({
             onMount={handleEditorMount}
             theme="vs-dark"
             options={{
+              readOnly: !!isReadOnly,
               fontSize: 14,
               fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
               fontLigatures: true,

@@ -14,7 +14,7 @@ import { GitHubOverview } from "@/components/dashboard/GitHubOverview";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import { StudentClassroomsPanel } from "@/components/dashboard/StudentClassroomsPanel";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, FileCheck } from "lucide-react";
+import { Trophy } from "lucide-react";
 
 type Section =
   | "dashboard"

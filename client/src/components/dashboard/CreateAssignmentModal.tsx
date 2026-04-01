@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { assignmentAPI } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   X,
   Plus,
@@ -10,7 +10,6 @@ import {
   Sparkles,
   Clock,
   Calendar,
-  Trophy,
   ChevronRight,
   Trash2,
   Eye,
@@ -25,6 +24,8 @@ interface Props {
 }
 
 type AssignmentType = "WEB_DEV" | "DSA";
+type Difficulty = "EASY" | "MEDIUM" | "HARD";
+type DSALanguage = "cpp" | "python" | "java";
 
 interface TestCaseEntry {
   input: string;
@@ -45,13 +46,13 @@ const TEMPLATES = [
   { id: "static", label: "Static Web" },
 ];
 
-const DSA_LANGUAGES = [
+const DSA_LANGUAGES: Array<{ id: DSALanguage; label: string }> = [
   { id: "cpp", label: "C++" },
   { id: "python", label: "Python" },
   { id: "java", label: "Java" },
 ];
 
-const DIFFICULTIES = [
+const DIFFICULTIES: Array<{ id: Difficulty; label: string; color: string }> = [
   { id: "EASY", label: "Easy", color: "text-green-400" },
   { id: "MEDIUM", label: "Medium", color: "text-yellow-400" },
   { id: "HARD", label: "Hard", color: "text-red-400" },
@@ -70,9 +71,9 @@ export function CreateAssignmentModal({ classroomId, open, onClose, onCreated }:
   // Step 2: Details
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [difficulty, setDifficulty] = useState("MEDIUM");
+  const [difficulty, setDifficulty] = useState<Difficulty>("MEDIUM");
   const [template, setTemplate] = useState("react");
-  const [language, setLanguage] = useState("cpp");
+  const [language, setLanguage] = useState<DSALanguage>("cpp");
   const [timeLimit, setTimeLimit] = useState("");
   const [deadline, setDeadline] = useState("");
   const [maxMarks, setMaxMarks] = useState("100");
@@ -99,18 +100,17 @@ export function CreateAssignmentModal({ classroomId, open, onClose, onCreated }:
 
   const handleAIGenerate = async () => {
     if (!title.trim()) return;
+    if (type !== "DSA") return;
     setGenerating(true);
     try {
       const { data } = await assignmentAPI.aiGenerate({
-        type,
         topic: title.trim(),
         difficulty,
-        language: type === "DSA" ? language : undefined,
-        template: type === "WEB_DEV" ? template : undefined,
+        language,
       });
-      if (data.description) setDescription(data.description);
-      if (data.testCases?.length) {
-        setTestCases(data.testCases);
+      if (data.generated?.description) setDescription(data.generated.description);
+      if (data.generated?.testcases?.length) {
+        setTestCases(data.generated.testcases);
       }
     } catch {
       // Silently fail

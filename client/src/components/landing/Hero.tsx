@@ -14,18 +14,8 @@ export const Navbar = () => {
     >
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/5">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="h-3.5 w-3.5 text-white"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 1c6.075 0 11 4.925 11 11s-4.925 11-11 11S1 18.075 1 12 5.925 1 12 1z" />
-              <path d="M12 5c3.866 0 7 3.134 7 7s-3.134 7-7 7-7-3.134-7-7 3.134-7 7-7z" opacity="0.4" />
-            </svg>
+          <div className="h-7 w-7 overflow-hidden rounded-lg border border-white/10 bg-white/5">
+            <img src="/logo.png" alt="Nebula logo" className="h-full w-full object-cover" />
           </div>
           <span className="text-base font-semibold tracking-tight">Nebula</span>
         </div>

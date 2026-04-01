@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { workspaceAPI } from "@/lib/api";
 import { IDEToolbar } from "@/components/ide/IDEToolbar";
 import { FileExplorer } from "@/components/ide/FileExplorer";
@@ -17,7 +17,7 @@ import {
   CommandPalette,
   type PaletteCommand,
 } from "@/components/ide/CommandPalette";
-import { aiAPI } from "@/lib/api";
+import { aiAPI, assignmentAPI } from "@/lib/api";
 import {
   Loader2,
   AlertCircle,
@@ -91,6 +91,9 @@ function formatHoverMarkdown(data: { explanation: string; suggestedFix: string; 
 export default function WorkspaceIDE() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const assignmentMode = searchParams.get("assignmentMode") === "webdev";
+  const assignmentId = searchParams.get("assignmentId");
 
   const [workspace, setWorkspace] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -111,6 +114,7 @@ export default function WorkspaceIDE() {
   const [previewPorts, setPreviewPorts] = useState<number[]>([]);
   const [activePreviewPort, setActivePreviewPort] = useState<number | null>(null);
   const [terminalHeight, setTerminalHeight] = useState(220);
+  const [assignmentLockedFiles, setAssignmentLockedFiles] = useState<string[]>([]);
 
   // Quick Open (Ctrl+P)
   const [showQuickOpen, setShowQuickOpen] = useState(false);
@@ -223,6 +227,34 @@ export default function WorkspaceIDE() {
       },
     });
   }, [workspaceId]);
+
+  useEffect(() => {
+    if (!assignmentMode || !assignmentId) {
+      setAssignmentLockedFiles([]);
+      return;
+    }
+
+    const normalize = (value: string) => value.replace(/\\/g, "/").replace(/^\/+/, "").trim();
+
+    assignmentAPI
+      .getOne(assignmentId)
+      .then(({ data }) => {
+        const config = data?.assignment?.assignmentConfig || {};
+        const locked = Array.isArray(config.lockedFiles)
+          ? config.lockedFiles.map((file: string) => normalize(String(file))).filter(Boolean)
+          : [];
+        setAssignmentLockedFiles(locked);
+      })
+      .catch(() => {
+        setAssignmentLockedFiles([]);
+      });
+  }, [assignmentMode, assignmentId]);
+
+  useEffect(() => {
+    if (assignmentMode && (activeSidebarPanel === "ai" || activeSidebarPanel === "ai-error")) {
+      setActiveSidebarPanel("files");
+    }
+  }, [assignmentMode, activeSidebarPanel]);
 
   // ── Handle dev-server port detection (from backend WS event) ────
   const handlePortDetected = useCallback((port: number) => {
@@ -592,11 +624,14 @@ export default function WorkspaceIDE() {
 
   // ── Derived state (must be above early returns) ─────────
   const activeFileTab = diffState ? null : (tabs.find((t) => t.path === activeTab) || null);
+  const normalizedActivePath = (activeFileTab?.path || "").replace(/\\/g, "/").replace(/^\/+/, "").trim();
+  const isAssignmentLockedFile = assignmentMode && !!normalizedActivePath && assignmentLockedFiles.includes(normalizedActivePath);
   const isWebTemplate = ["static", "react", "react-ts", "nextjs", "vite-react-ts", "vue", "angular"].includes(workspace?.template || "");
   const canShowPreview = isWebTemplate || previewPorts.length > 0;
   const changedFilesCount = (gitStatus?.modified?.length || 0) + (gitStatus?.untracked?.length || 0);
 
   const toggleSidebarPanel = useCallback((panel: SidebarPanel) => {
+    if (assignmentMode && (panel === "ai" || panel === "ai-error")) return;
     setActiveSidebarPanel((prev) => {
       if (prev === panel && showSidebar) {
         setShowSidebar(false);
@@ -605,7 +640,7 @@ export default function WorkspaceIDE() {
       setShowSidebar(true);
       return panel;
     });
-  }, [showSidebar]);
+  }, [showSidebar, assignmentMode]);
 
   // ── Command palette commands ────────────────────────────
   const paletteCommands: PaletteCommand[] = useMemo(
@@ -866,19 +901,23 @@ export default function WorkspaceIDE() {
             title="Source Control"
           />
 
-          <ActivityBarButton
-            icon={<BrainCircuit className="w-[22px] h-[22px]" />}
-            active={activeSidebarPanel === "ai" && showSidebar}
-            onClick={() => toggleSidebarPanel("ai")}
-            title="AI Context"
-          />
+          {!assignmentMode && (
+            <ActivityBarButton
+              icon={<BrainCircuit className="w-[22px] h-[22px]" />}
+              active={activeSidebarPanel === "ai" && showSidebar}
+              onClick={() => toggleSidebarPanel("ai")}
+              title="AI Context"
+            />
+          )}
 
-          <ActivityBarButton
-            icon={<Sparkles className="w-[22px] h-[22px]" />}
-            active={activeSidebarPanel === "ai-error" && showSidebar}
-            onClick={() => toggleSidebarPanel("ai-error")}
-            title="AI Error Resolver"
-          />
+          {!assignmentMode && (
+            <ActivityBarButton
+              icon={<Sparkles className="w-[22px] h-[22px]" />}
+              active={activeSidebarPanel === "ai-error" && showSidebar}
+              onClick={() => toggleSidebarPanel("ai-error")}
+              title="AI Error Resolver"
+            />
+          )}
 
           <ActivityBarButton
             icon={<Rocket className="w-[22px] h-[22px]" />}
@@ -963,13 +1002,13 @@ export default function WorkspaceIDE() {
                 </div>
               </div>
             )}
-            {activeSidebarPanel === "ai" && (
+            {!assignmentMode && activeSidebarPanel === "ai" && (
               <AIContextPanel
                 workspaceId={workspaceId!}
                 activeFile={activeTab}
               />
             )}
-            {activeSidebarPanel === "ai-error" && (
+            {!assignmentMode && activeSidebarPanel === "ai-error" && (
               <AIErrorResolverPanel
                 workspaceId={workspaceId!}
                 activeFile={activeTab}
@@ -1012,6 +1051,7 @@ export default function WorkspaceIDE() {
                   onSave={saveFile}
                   activeFileTab={activeFileTab}
                   onEditorMount={handleEditorMount}
+                  isReadOnly={isAssignmentLockedFile}
                 />
               )}
             </div>

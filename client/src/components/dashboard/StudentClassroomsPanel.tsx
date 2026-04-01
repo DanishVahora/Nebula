@@ -3,7 +3,7 @@ import { classroomAPI } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ClassroomDetailView } from "./ClassroomDetailView";
 import { motion, AnimatePresence } from "framer-motion";
-import { School, Users, LogIn, X, ClipboardList } from "lucide-react";
+import { School, Users, LogIn, X } from "lucide-react";
 
 interface Classroom {
   id: string;
@@ -12,7 +12,6 @@ interface Classroom {
   memberCount: number;
   createdAt: string;
   teacher: { id: string; name: string | null; avatar: string | null };
-  _count?: { assignments: number };
 }
 
 export function StudentClassroomsPanel() {
@@ -165,7 +164,7 @@ export function StudentClassroomsPanel() {
           </div>
           <h3 className="text-base font-semibold">No classrooms yet</h3>
           <p className={`mt-1.5 max-w-sm text-center text-sm ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>
-            Join a classroom using an invite code from your teacher to access assignments and workspaces.
+            Join a classroom using an invite code from your teacher to access your class space.
           </p>
           <button
             onClick={() => setShowJoin(true)}
@@ -207,10 +206,6 @@ export function StudentClassroomsPanel() {
                 <span className={`flex items-center gap-1.5 ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>
                   <Users className="h-3.5 w-3.5" />
                   {c.memberCount} member{c.memberCount !== 1 ? "s" : ""}
-                </span>
-                <span className={`flex items-center gap-1.5 ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>
-                  <ClipboardList className="h-3.5 w-3.5" />
-                  {c._count?.assignments ?? 0} assignment{(c._count?.assignments ?? 0) !== 1 ? "s" : ""}
                 </span>
               </div>
 

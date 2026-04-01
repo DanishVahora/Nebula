@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { classroomAPI } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import { ClassroomAssignmentsPanel } from "./ClassroomAssignmentsPanel";
+import { BlogsPanel } from "@/components/classroom/BlogsPanel";
+import { AssignmentsPanel } from "@/components/classroom/assignment/AssignmentsPanel";
+import { AnalyticsOverview } from "@/components/classroom/analytics/AnalyticsOverview";
+import { LeaderboardPanel } from "@/components/classroom/analytics/LeaderboardPanel";
+import { StudentProgressModal } from "@/components/classroom/analytics/StudentProgressModal";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -11,6 +14,9 @@ import {
   Copy,
   Check,
   FileCode,
+  LayoutDashboard,
+  Trophy,
+  Newspaper,
 } from "lucide-react";
 
 interface Props {
@@ -22,19 +28,23 @@ interface ClassroomDetail {
   id: string;
   name: string;
   description: string | null;
-  joinCode: string;
+  joinCode?: string;
   myRole: string;
   teacher: { id: string; name: string | null; avatar: string | null; email: string };
-  _count: { members: number };
+  memberCount: number;
 }
 
 export function ClassroomDetailView({ classroomId, onBack }: Props) {
   const { isDark } = useTheme();
-  const { user } = useAuth();
   const [classroom, setClassroom] = useState<ClassroomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [tab, setTab] = useState<"assignments" | "members">("assignments");
+  const [selectedStudent, setSelectedStudent] = useState<{
+    id: string;
+    name: string | null;
+    email: string;
+  } | null>(null);
+  const [tab, setTab] = useState<"overview" | "blogs" | "assignments" | "leaderboard" | "students">("overview");
 
   useEffect(() => {
     (async () => {
@@ -50,7 +60,7 @@ export function ClassroomDetailView({ classroomId, onBack }: Props) {
   }, [classroomId]);
 
   const copyCode = () => {
-    if (!classroom) return;
+    if (!classroom?.joinCode) return;
     navigator.clipboard.writeText(classroom.joinCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -109,7 +119,7 @@ export function ClassroomDetailView({ classroomId, onBack }: Props) {
               </div>
             </div>
 
-            {isTeacher && (
+            {isTeacher && classroom.joinCode && (
               <button
                 onClick={copyCode}
                 className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-mono font-medium transition-colors ${
@@ -126,7 +136,7 @@ export function ClassroomDetailView({ classroomId, onBack }: Props) {
 
           <div className="mt-3 flex items-center gap-4">
             <span className={`flex items-center gap-1 text-xs ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>
-              <Users className="h-3 w-3" /> {classroom._count.members} members
+              <Users className="h-3 w-3" /> {classroom.memberCount} members
             </span>
             <span className={`text-xs ${isDark ? "text-zinc-600" : "text-zinc-400"}`}>
               Teacher: {classroom.teacher.name || classroom.teacher.email}
@@ -137,7 +147,7 @@ export function ClassroomDetailView({ classroomId, onBack }: Props) {
 
       {/* Tabs */}
       <div className="flex gap-1">
-        {(["assignments", "members"] as const).map((t) => (
+        {(["overview", "blogs", "assignments", "leaderboard", "students"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -151,26 +161,57 @@ export function ClassroomDetailView({ classroomId, onBack }: Props) {
                 : "text-zinc-500 hover:text-zinc-700"
             }`}
           >
-            {t === "assignments" ? <FileCode className="h-3 w-3" /> : <Users className="h-3 w-3" />}
+            {t === "overview" && <LayoutDashboard className="h-3 w-3" />}
+            {t === "blogs" && <Newspaper className="h-3 w-3" />}
+            {t === "assignments" && <FileCode className="h-3 w-3" />}
+            {t === "leaderboard" && <Trophy className="h-3 w-3" />}
+            {t === "students" && <Users className="h-3 w-3" />}
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
-      {tab === "assignments" && (
-        <ClassroomAssignmentsPanel classroomId={classroomId} isTeacher={isTeacher} />
+      {tab === "overview" && (
+        <AnalyticsOverview classroomId={classroomId} />
       )}
 
-      {tab === "members" && (
-        <MembersList classroomId={classroomId} isTeacher={isTeacher} />
+      {tab === "students" && (
+        <MembersList classroomId={classroomId} isTeacher={isTeacher} onStudentClick={setSelectedStudent} />
       )}
+
+      {tab === "blogs" && (
+        <BlogsPanel classroomId={classroomId} isTeacher={isTeacher} />
+      )}
+
+      {tab === "assignments" && (
+        <AssignmentsPanel classroomId={classroomId} isTeacher={isTeacher} />
+      )}
+
+      {tab === "leaderboard" && (
+        <LeaderboardPanel classroomId={classroomId} />
+      )}
+
+      <StudentProgressModal
+        open={Boolean(selectedStudent)}
+        onClose={() => setSelectedStudent(null)}
+        classroomId={classroomId}
+        student={selectedStudent}
+      />
     </motion.div>
   );
 }
 
 // ── Members list sub-component ─────────────────────────
-function MembersList({ classroomId, isTeacher }: { classroomId: string; isTeacher: boolean }) {
+function MembersList({
+  classroomId,
+  isTeacher,
+  onStudentClick,
+}: {
+  classroomId: string;
+  isTeacher: boolean;
+  onStudentClick: (student: { id: string; name: string | null; email: string }) => void;
+}) {
   const { isDark } = useTheme();
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,9 +264,10 @@ function MembersList({ classroomId, isTeacher }: { classroomId: string; isTeache
       {students.map((s: any) => (
         <div
           key={s.id}
+          onClick={() => onStudentClick({ id: s.id, name: s.name || null, email: s.email })}
           className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
             isDark ? "border-white/[0.06] bg-white/[0.02]" : "border-black/[0.06] bg-black/[0.02]"
-          }`}
+          } ${isTeacher ? "cursor-pointer transition-colors hover:border-yellow-500/30 hover:bg-yellow-500/5" : ""}`}
         >
           {s.avatar ? (
             <img src={s.avatar} alt="" className="h-8 w-8 rounded-full" />

@@ -46,17 +46,8 @@ export default function Signup() {
       >
         {/* Logo & heading */}
         <div className="mb-8 flex flex-col items-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="h-6 w-6 text-white"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 1c6.075 0 11 4.925 11 11s-4.925 11-11 11S1 18.075 1 12 5.925 1 12 1z" />
-            </svg>
+          <div className="mb-4 h-12 w-12 overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm">
+            <img src="/logo.png" alt="Nebula logo" className="h-full w-full object-cover" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">
             Create your account

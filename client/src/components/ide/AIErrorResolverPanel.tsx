@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { aiAPI, workspaceAPI } from "@/lib/api";
 import {
     AlertTriangle,

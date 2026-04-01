@@ -76,6 +76,26 @@ export const classroomAPI = {
     api.get(`/classrooms/${id}`),
   getStudents: (id: string) =>
     api.get(`/classrooms/${id}/students`),
+  getLeaderboard: (id: string) =>
+    api.get(`/classrooms/${id}/leaderboard`),
+  getAnalytics: (id: string) =>
+    api.get(`/classrooms/${id}/analytics`),
+  getStudentProgress: (id: string, studentId: string) =>
+    api.get(`/classrooms/${id}/students/${studentId}/progress`),
+};
+
+// Classroom blog endpoints
+export const blogAPI = {
+  create: (classroomId: string, data: { title: string; content: string }) =>
+    api.post(`/classrooms/${classroomId}/blogs`, data),
+  getForClassroom: (classroomId: string) =>
+    api.get(`/classrooms/${classroomId}/blogs`),
+  getOne: (id: string) =>
+    api.get(`/blogs/${id}`),
+  update: (id: string, data: { title: string; content: string }) =>
+    api.put(`/blogs/${id}`, data),
+  delete: (id: string) =>
+    api.delete(`/blogs/${id}`),
 };
 
 // Assignment endpoints
@@ -87,6 +107,13 @@ export const assignmentAPI = {
     type: "WEB_DEV" | "DSA";
     difficulty?: string;
     template?: string;
+    assignmentConfig?: {
+      template: string;
+      lockedFiles: string[];
+      editableFiles: string[];
+      referenceImages: string[];
+      instructions: string;
+    };
     starterCode?: Record<string, string>;
     language?: string;
     timeLimit?: number;
@@ -105,11 +132,14 @@ export const assignmentAPI = {
   start: (id: string) =>
     api.post(`/assignments/${id}/start`),
 
-  submit: (id: string, data?: { code?: string }) =>
+  submit: (id: string, data?: { workspaceId?: string }) =>
     api.post(`/assignments/${id}/submit`, data || {}),
 
   getSubmissions: (id: string) =>
     api.get(`/assignments/${id}/submissions`),
+
+  getSubmissionDeployment: (submissionId: string) =>
+    api.get(`/submissions/${submissionId}/deployment`),
 
   gradeSubmission: (submissionId: string, data: { score: number; feedback?: string }) =>
     api.post(`/assignments/submissions/${submissionId}/grade`, data),
@@ -123,8 +153,28 @@ export const assignmentAPI = {
   delete: (id: string) =>
     api.delete(`/assignments/${id}`),
 
-  aiGenerate: (data: { type: string; topic: string; difficulty?: string; language?: string; template?: string }) =>
+  aiGenerate: (data: { topic: string; difficulty: "EASY" | "MEDIUM" | "HARD"; language: "cpp" | "python" | "java" }) =>
     api.post("/assignments/ai/generate", data),
+};
+
+// DSA playground endpoints
+export const dsaAPI = {
+  run: (data: {
+    assignmentId: string;
+    code: string;
+    language: "cpp" | "python" | "java";
+    customInput?: string;
+    customExpectedOutput?: string;
+  }) => api.post("/dsa/run", data),
+
+  submit: (data: {
+    assignmentId: string;
+    code: string;
+    language: "cpp" | "python" | "java";
+  }) => api.post("/dsa/submit", data),
+
+  getSubmission: (submissionId: string) =>
+    api.get(`/dsa/submission/${submissionId}`),
 };
 
 // Workspace IDE endpoints

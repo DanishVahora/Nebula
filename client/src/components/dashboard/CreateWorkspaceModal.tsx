@@ -19,7 +19,6 @@ import {
   Eye,
   EyeOff,
   GitBranch,
-  ExternalLink,
   Rocket,
   AlertCircle,
 } from "lucide-react";

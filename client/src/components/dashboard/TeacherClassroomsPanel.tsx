@@ -10,7 +10,6 @@ import {
   Copy,
   Check,
   X,
-  ClipboardList,
 } from "lucide-react";
 
 interface Classroom {
@@ -21,7 +20,6 @@ interface Classroom {
   memberCount: number;
   createdAt: string;
   teacher: { id: string; name: string | null; avatar: string | null };
-  _count?: { assignments: number };
 }
 
 export function TeacherClassroomsPanel() {
@@ -177,7 +175,7 @@ export function TeacherClassroomsPanel() {
           </div>
           <h3 className="text-base font-semibold">No classrooms yet</h3>
           <p className={`mt-1.5 max-w-sm text-center text-sm ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>
-            Create a classroom to organize your students, assignments, and workspaces in one place.
+            Create a classroom to organize and manage your students in one place.
           </p>
           <button
             onClick={() => setShowCreate(true)}
@@ -221,10 +219,6 @@ export function TeacherClassroomsPanel() {
                 <span className={`flex items-center gap-1.5 ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>
                   <Users className="h-3.5 w-3.5" />
                   {c.memberCount} member{c.memberCount !== 1 ? "s" : ""}
-                </span>
-                <span className={`flex items-center gap-1.5 ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>
-                  <ClipboardList className="h-3.5 w-3.5" />
-                  {c._count?.assignments ?? 0} assignment{(c._count?.assignments ?? 0) !== 1 ? "s" : ""}
                 </span>
               </div>
 

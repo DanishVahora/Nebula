@@ -28,6 +28,7 @@ model User {
   submissions       Submission[]
   classrooms        Classroom[]
   classroomMembers  ClassroomMember[]
+  blogPosts         BlogPost[]
 
   @@unique([provider, providerId])
 }
@@ -78,7 +79,8 @@ model Assignment {
   type        String    @default("WEB_DEV") // WEB_DEV | DSA
   difficulty  String    @default("MEDIUM")  // EASY | MEDIUM | HARD
   template    String?   // react | nextjs | nodejs | vite-react-ts | null (for DSA)
-  starterCode String?   // JSON: { "filename": "content", ... }
+  assignmentConfig Json? // { template, lockedFiles, editableFiles, referenceImages, instructions }
+  starterCode Json?     // { "filename": "content", ... }
   language    String?   // For DSA: cpp | python | java
   timeLimit   Int?      // Minutes allowed to complete
   deadline    DateTime?
@@ -110,17 +112,18 @@ model TestCase {
 model Submission {
   id           String    @id @default(auto()) @map("_id") @db.ObjectId
   assignmentId String    @db.ObjectId
-  studentId    String    @db.ObjectId
+  userId       String    @map("studentId") @db.ObjectId
   workspaceId  String?   @db.ObjectId
-  code         String?   // Snapshot of submitted code (for DSA)
   score        Int?
   feedback     String?
+  deploymentUrl String?
+  workspaceSnapshot Json?
   status       String    @default("IN_PROGRESS") // IN_PROGRESS | SUBMITTED | GRADED | TIMED_OUT
-  startedAt    DateTime  @default(now())
+  createdAt    DateTime  @map("startedAt") @default(now())
   submittedAt  DateTime?
 
   assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  student    User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Classroom {
@@ -135,6 +138,7 @@ model Classroom {
   teacher     User               @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   members     ClassroomMember[]
   assignments Assignment[]
+  blogPosts   BlogPost[]
 }
 
 model ClassroomMember {
@@ -148,6 +152,19 @@ model ClassroomMember {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([classroomId, userId])
+}
+
+model BlogPost {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  classroomId String   @db.ObjectId
+  authorId    String   @db.ObjectId
+  title       String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
 model Deployment {

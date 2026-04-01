@@ -5,9 +5,6 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { motion } from "framer-motion";
 import {
   FileCheck,
-  CheckCircle2,
-  Clock,
-  AlertTriangle,
   Code2,
   Globe,
   Award,
