@@ -2,11 +2,13 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { WavyBackground } from "@/components/ui/wavy-background";
+import { AlertCircle } from "lucide-react";
 
 export default function Login() {
   const { isAuthenticated, loading, login, user } = useAuth();
   const [searchParams] = useSearchParams();
   const error = searchParams.get("error");
+  const existingRole = searchParams.get("existingRole");
 
   if (loading) {
     return (
@@ -20,6 +22,25 @@ export default function Login() {
     const target = user.role === "TEACHER" ? "/teacher-dashboard" : "/student-dashboard";
     return <Navigate to={target} replace />;
   }
+
+  // Map error codes to user-friendly messages
+  const getErrorMessage = () => {
+    switch (error) {
+      case "google_auth_failed":
+      case "github_auth_failed":
+        return "Authentication failed. Please try again.";
+      case "account_not_found":
+        return "No account found. Please sign up first.";
+      case "role_conflict":
+        return `This account is already registered as a ${existingRole}. You cannot change roles.`;
+      case "email_exists":
+        return `This email is already registered as a ${existingRole}. Please log in instead.`;
+      default:
+        return error ? "Something went wrong. Please try again." : null;
+    }
+  };
+
+  const errorMessage = getErrorMessage();
 
   return (
     <WavyBackground
@@ -50,13 +71,23 @@ export default function Login() {
         </div>
 
         {/* Error message */}
-        {error && (
+        {errorMessage && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-center text-sm text-red-300 backdrop-blur-sm"
+            className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 backdrop-blur-sm"
           >
-            Authentication failed. Please try again.
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-red-300">{errorMessage}</p>
+                {error === "account_not_found" && (
+                  <Link to="/signup" className="mt-2 inline-block text-sm text-red-400 hover:text-red-300 underline">
+                    Create an account →
+                  </Link>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
 

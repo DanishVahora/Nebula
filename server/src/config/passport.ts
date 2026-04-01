@@ -12,15 +12,28 @@ passport.use(
       clientSecret: env.GOOGLE_CLIENT_SECRET,
       callbackURL: `http://localhost:${env.PORT}/api/auth/google/callback`,
       scope: ["profile", "email"],
+      passReqToCallback: true,
     },
-    async (_accessToken, _refreshToken, profile, done) => {
+    async (req: any, _accessToken: string, _refreshToken: string, profile: any, done: any) => {
       try {
         const email = profile.emails?.[0]?.value;
         if (!email) {
           return done(new Error("No email found in Google profile"));
         }
 
-        // Find or create user
+        // Parse state to get mode and role
+        let mode = "login";
+        let signupRole = "STUDENT";
+        const stateParam = req.query?.state;
+        if (stateParam) {
+          try {
+            const state = JSON.parse(stateParam);
+            mode = state.mode || "login";
+            signupRole = state.role || "STUDENT";
+          } catch {}
+        }
+
+        // Find user by provider
         let user = await prisma.user.findUnique({
           where: {
             provider_providerId: {
@@ -37,10 +50,18 @@ passport.use(
           });
 
           if (existingUser) {
-            // Email already taken by different auth provider
+            // For login mode, use existing account
+            // For signup mode, the callback will handle role conflict
             return done(null, existingUser);
           }
 
+          // New user - only create if in signup mode
+          if (mode === "login") {
+            // Return null - callback will handle redirect to signup
+            return done(null, false, { message: "account_not_found" });
+          }
+
+          // Create new user with selected role
           user = await prisma.user.create({
             data: {
               email,
@@ -48,6 +69,7 @@ passport.use(
               avatar: profile.photos?.[0]?.value,
               provider: "google",
               providerId: profile.id,
+              role: signupRole,
             },
           });
         }

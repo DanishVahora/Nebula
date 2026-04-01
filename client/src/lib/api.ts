@@ -16,9 +16,12 @@ const api = axios.create({
 export const authAPI = {
   getMe: () => api.get("/auth/me"),
   logout: () => api.post("/auth/logout"),
-  // OAuth URLs (redirect, not AJAX)
-  googleLoginUrl: `${API_BASE}/api/auth/google`,
-  githubLoginUrl: `${API_BASE}/api/auth/github`,
+  checkEmail: (email: string) => api.get(`/auth/check-email?email=${encodeURIComponent(email)}`),
+  // OAuth URLs (redirect, not AJAX) - now support mode and role params
+  googleLoginUrl: `${API_BASE}/api/auth/google?mode=login`,
+  githubLoginUrl: `${API_BASE}/api/auth/github?mode=login`,
+  googleSignupUrl: (role: string) => `${API_BASE}/api/auth/google?mode=signup&role=${role}`,
+  githubSignupUrl: (role: string) => `${API_BASE}/api/auth/github?mode=signup&role=${role}`,
   githubLinkUrl: `${API_BASE}/api/auth/github/link`,
   disconnectGitHub: () => api.delete("/auth/github/disconnect"),
 };

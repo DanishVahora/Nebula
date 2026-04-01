@@ -1,10 +1,18 @@
 import { HoverBorderGradient } from "@/components/ui/hover-border-gradient";
 import { SparklesCore } from "@/components/ui/sparkles";
 import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, LogOut, LayoutDashboard } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Navbar = () => {
+  const { isAuthenticated, user, logout, loading } = useAuth();
+
+  const getDashboardLink = () => {
+    if (!user) return "/dashboard";
+    return user.role === "TEACHER" ? "/teacher-dashboard" : "/student-dashboard";
+  };
+
   return (
     <motion.nav
       initial={{ y: -20, opacity: 0 }}
@@ -33,19 +41,62 @@ export const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <Link
-            to="/login"
-            className="hidden text-xs text-zinc-500 transition-colors hover:text-white sm:block"
-          >
-            Sign in
-          </Link>
-          <Link to="/signup">
-            <HoverBorderGradient containerClassName="hidden sm:block">
-              <span className="flex items-center gap-1.5 text-xs">
-                Get Started <ArrowRight className="h-3 w-3" />
-              </span>
-            </HoverBorderGradient>
-          </Link>
+          {loading ? (
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-700 border-t-white" />
+          ) : isAuthenticated && user ? (
+            // Logged in state
+            <>
+              <Link
+                to={getDashboardLink()}
+                className="flex items-center gap-2 text-xs text-zinc-400 transition-colors hover:text-white"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">Dashboard</span>
+              </Link>
+              <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name || "User"}
+                    className="h-5 w-5 rounded-full"
+                  />
+                ) : (
+                  <div className="h-5 w-5 rounded-full bg-gradient-to-br from-green-400 to-blue-500" />
+                )}
+                <span className="text-xs text-zinc-300">{user.name || user.email}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${user.role === "TEACHER"
+                    ? "bg-yellow-500/20 text-yellow-400"
+                    : "bg-green-500/20 text-green-400"
+                  }`}>
+                  {user.role}
+                </span>
+              </div>
+              <button
+                onClick={() => logout()}
+                className="flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-red-400"
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </>
+          ) : (
+            // Logged out state
+            <>
+              <Link
+                to="/login"
+                className="hidden text-xs text-zinc-500 transition-colors hover:text-white sm:block"
+              >
+                Sign in
+              </Link>
+              <Link to="/signup">
+                <HoverBorderGradient containerClassName="hidden sm:block">
+                  <span className="flex items-center gap-1.5 text-xs">
+                    Get Started <ArrowRight className="h-3 w-3" />
+                  </span>
+                </HoverBorderGradient>
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </motion.nav>

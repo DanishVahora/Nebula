@@ -3,12 +3,13 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { WavyBackground } from "@/components/ui/wavy-background";
-import { GraduationCap, BookOpen } from "lucide-react";
+import { GraduationCap, BookOpen, AlertCircle } from "lucide-react";
 
 export default function Signup() {
-  const { isAuthenticated, loading, login, user } = useAuth();
+  const { isAuthenticated, loading, signup, user } = useAuth();
   const [searchParams] = useSearchParams();
   const error = searchParams.get("error");
+  const existingRole = searchParams.get("existingRole");
   const [selectedRole, setSelectedRole] = useState<"STUDENT" | "TEACHER">("STUDENT");
 
   if (loading) {
@@ -24,10 +25,28 @@ export default function Signup() {
     return <Navigate to={target} replace />;
   }
 
-  const handleLogin = (provider: "google" | "github") => {
-    localStorage.setItem("nebula_signup_role", selectedRole);
-    login(provider);
+  const handleSignup = (provider: "google" | "github") => {
+    signup(provider, selectedRole);
   };
+
+  // Map error codes to user-friendly messages
+  const getErrorMessage = () => {
+    switch (error) {
+      case "google_auth_failed":
+      case "github_auth_failed":
+        return "Authentication failed. Please try again.";
+      case "account_not_found":
+        return "No account found with this email. Please complete your signup below.";
+      case "role_conflict":
+        return `This account is already registered as a ${existingRole}. You cannot sign up as a different role.`;
+      case "email_exists":
+        return `This email is already registered as a ${existingRole}. Please log in instead.`;
+      default:
+        return error ? "Something went wrong. Please try again." : null;
+    }
+  };
+
+  const errorMessage = getErrorMessage();
 
   return (
     <WavyBackground
@@ -58,13 +77,23 @@ export default function Signup() {
         </div>
 
         {/* Error message */}
-        {error && (
+        {errorMessage && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-center text-sm text-red-300 backdrop-blur-sm"
+            className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 backdrop-blur-sm"
           >
-            Something went wrong. Please try again.
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-red-300">{errorMessage}</p>
+                {(error === "role_conflict" || error === "email_exists") && (
+                  <Link to="/login" className="mt-2 inline-block text-sm text-red-400 hover:text-red-300 underline">
+                    Go to login →
+                  </Link>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
 
@@ -99,12 +128,15 @@ export default function Signup() {
                 <span className="text-sm font-medium">Teacher</span>
               </button>
             </div>
+            <p className="mt-3 text-center text-xs text-zinc-600">
+              ⚠️ Choose carefully — you cannot change your role later
+            </p>
           </div>
 
           <div className="space-y-3">
             {/* Google */}
             <button
-              onClick={() => handleLogin("google")}
+              onClick={() => handleSignup("google")}
               className="group flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.04] text-sm font-medium text-zinc-200 transition-all duration-200 hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white"
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
@@ -127,7 +159,7 @@ export default function Signup() {
 
             {/* GitHub */}
             <button
-              onClick={() => handleLogin("github")}
+              onClick={() => handleSignup("github")}
               className="group flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.04] text-sm font-medium text-zinc-200 transition-all duration-200 hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white"
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">

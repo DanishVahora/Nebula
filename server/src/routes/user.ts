@@ -142,6 +142,7 @@ router.get(
 );
 
 // ── Update user role ───────────────────────────────────
+// NOTE: Role changes are now restricted - users cannot switch between STUDENT and TEACHER
 router.patch("/role", authenticate, async (req: Request, res: Response) => {
   try {
     const { role } = req.body;
@@ -150,6 +151,64 @@ router.patch("/role", authenticate, async (req: Request, res: Response) => {
     if (!role || !validRoles.includes(role)) {
       res.status(400).json({ error: "Invalid role. Must be STUDENT or TEACHER." });
       return;
+    }
+
+    // Get current user
+    const currentUser = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { role: true },
+    });
+
+    if (!currentUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    // Prevent role switching if user has already established a role
+    // Users can only set their role once during initial signup
+    if (currentUser.role !== "STUDENT" && currentUser.role !== role) {
+      res.status(403).json({ 
+        error: `You are already registered as a ${currentUser.role}. Role cannot be changed.`,
+        currentRole: currentUser.role
+      });
+      return;
+    }
+
+    // Check if user has any activity that would lock their role
+    // Students: check for submissions or classroom memberships
+    // Teachers: check for classrooms or assignments created
+    if (currentUser.role === "STUDENT" && role === "TEACHER") {
+      const hasStudentActivity = await prisma.submission.findFirst({
+        where: { userId: req.user!.userId },
+      });
+      const hasClassroomMembership = await prisma.classroomMember.findFirst({
+        where: { userId: req.user!.userId, role: "STUDENT" },
+      });
+      
+      if (hasStudentActivity || hasClassroomMembership) {
+        res.status(403).json({ 
+          error: "Cannot switch to TEACHER. You have student activity (submissions or classroom memberships).",
+          currentRole: currentUser.role
+        });
+        return;
+      }
+    }
+
+    if (currentUser.role === "TEACHER" && role === "STUDENT") {
+      const hasClassrooms = await prisma.classroom.findFirst({
+        where: { teacherId: req.user!.userId },
+      });
+      const hasAssignments = await prisma.assignment.findFirst({
+        where: { createdBy: req.user!.userId },
+      });
+      
+      if (hasClassrooms || hasAssignments) {
+        res.status(403).json({ 
+          error: "Cannot switch to STUDENT. You have teacher activity (classrooms or assignments created).",
+          currentRole: currentUser.role
+        });
+        return;
+      }
     }
 
     const user = await prisma.user.update({

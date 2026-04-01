@@ -33,6 +33,7 @@ interface AuthContextType {
   error: string | null;
   isAuthenticated: boolean;
   login: (provider: "google" | "github") => void;
+  signup: (provider: "google" | "github", role: "STUDENT" | "TEACHER") => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   updateRole: (role: "STUDENT" | "TEACHER") => Promise<void>;
@@ -70,6 +71,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = url;
   };
 
+  const signup = (provider: "google" | "github", role: "STUDENT" | "TEACHER") => {
+    const url =
+      provider === "google"
+        ? authAPI.googleSignupUrl(role)
+        : authAPI.githubSignupUrl(role);
+    window.location.href = url;
+  };
+
   const logout = async () => {
     try {
       await authAPI.logout();
@@ -100,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error,
         isAuthenticated: !!user,
         login,
+        signup,
         logout,
         refreshUser,
         updateRole,
