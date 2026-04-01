@@ -12,7 +12,7 @@ import {
   ChevronRight,
   AlertTriangle,
 } from "lucide-react";
-import { assignmentAPI, classroomAPI } from "@/lib/api";
+import { assignmentAPI, classroomAPI, userAPI } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CreateAssignmentModal } from "./CreateAssignmentModal";
 import { SubmissionsPanel } from "./SubmissionsPanel";
@@ -51,15 +51,17 @@ export function TeacherAssignmentsPanel() {
     try {
       setLoading(true);
       const [aRes, cRes] = await Promise.all([
-        assignmentAPI.getMyAll(),
+        assignmentAPI.getMyAll().catch(() => userAPI.getAssignments()),
         classroomAPI.getMy(),
       ]);
       setAssignments(aRes.data.assignments || []);
-      // Use classrooms from the classrooms API (teacher may have classrooms with no assignments)
-      const myClassrooms = (cRes.data.classrooms || []).map((c: { id: string; name: string }) => ({
-        id: c.id,
-        name: c.name,
-      }));
+      // Keep classroom selection independent from assignment availability.
+      const myClassrooms = (cRes.data.classrooms || [])
+        .filter((c: { myRole?: string }) => !c.myRole || c.myRole === "TEACHER")
+        .map((c: { id: string; name: string }) => ({
+          id: c.id,
+          name: c.name,
+        }));
       setClassrooms(myClassrooms);
     } catch {
       console.error("Failed to fetch assignments");
@@ -87,9 +89,8 @@ export function TeacherAssignmentsPanel() {
       <div>
         <button
           onClick={() => setViewingSubmissions(null)}
-          className={`mb-4 flex items-center gap-1 text-sm font-medium transition-colors ${
-            isDark ? "text-zinc-400 hover:text-zinc-200" : "text-zinc-500 hover:text-zinc-800"
-          }`}
+          className={`mb-4 flex items-center gap-1 text-sm font-medium transition-colors ${isDark ? "text-zinc-400 hover:text-zinc-200" : "text-zinc-500 hover:text-zinc-800"
+            }`}
         >
           ← Back to assignments
         </button>
@@ -122,9 +123,8 @@ export function TeacherAssignmentsPanel() {
       </div>
 
       {assignments.length === 0 ? (
-        <div className={`flex flex-col items-center justify-center rounded-2xl border py-16 ${
-          isDark ? "border-white/[0.06] bg-white/[0.02]" : "border-black/[0.06] bg-black/[0.02]"
-        }`}>
+        <div className={`flex flex-col items-center justify-center rounded-2xl border py-16 ${isDark ? "border-white/[0.06] bg-white/[0.02]" : "border-black/[0.06] bg-black/[0.02]"
+          }`}>
           <AlertTriangle className={`mb-3 h-8 w-8 ${isDark ? "text-zinc-600" : "text-zinc-400"}`} />
           <p className="text-sm font-medium">No assignments yet</p>
           <p className={`mt-1 text-sm ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>
@@ -144,19 +144,17 @@ export function TeacherAssignmentsPanel() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ delay: i * 0.04 }}
-                  className={`group rounded-xl border p-4 transition-colors ${
-                    isDark
+                  className={`group rounded-xl border p-4 transition-colors ${isDark
                       ? "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]"
                       : "border-black/[0.06] bg-white hover:bg-zinc-50"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3">
-                      <div className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg ${
-                        a.type === "DSA"
+                      <div className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg ${a.type === "DSA"
                           ? isDark ? "bg-purple-500/10 text-purple-400" : "bg-purple-50 text-purple-600"
                           : isDark ? "bg-blue-500/10 text-blue-400" : "bg-blue-50 text-blue-600"
-                      }`}>
+                        }`}>
                         {a.type === "DSA" ? <Code2 className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
                       </div>
                       <div>
@@ -172,11 +170,10 @@ export function TeacherAssignmentsPanel() {
                             {a.type === "DSA" ? "DSA" : "Web Dev"}
                           </span>
                           {a.deadline && (
-                            <span className={`flex items-center gap-1 text-xs ${
-                              isOverdue
+                            <span className={`flex items-center gap-1 text-xs ${isOverdue
                                 ? "text-red-400"
                                 : isDark ? "text-zinc-500" : "text-zinc-500"
-                            }`}>
+                              }`}>
                               <Clock className="h-3 w-3" />
                               {new Date(a.deadline).toLocaleDateString()}
                             </span>
@@ -192,18 +189,16 @@ export function TeacherAssignmentsPanel() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setViewingSubmissions(a.id)}
-                        className={`rounded-lg p-2 text-xs transition-colors ${
-                          isDark ? "hover:bg-white/5 text-zinc-500 hover:text-zinc-300" : "hover:bg-black/5 text-zinc-400 hover:text-zinc-700"
-                        }`}
+                        className={`rounded-lg p-2 text-xs transition-colors ${isDark ? "hover:bg-white/5 text-zinc-500 hover:text-zinc-300" : "hover:bg-black/5 text-zinc-400 hover:text-zinc-700"
+                          }`}
                         title="View submissions"
                       >
                         <Eye className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(a.id)}
-                        className={`rounded-lg p-2 text-xs transition-colors ${
-                          isDark ? "hover:bg-red-500/10 text-zinc-500 hover:text-red-400" : "hover:bg-red-50 text-zinc-400 hover:text-red-500"
-                        }`}
+                        className={`rounded-lg p-2 text-xs transition-colors ${isDark ? "hover:bg-red-500/10 text-zinc-500 hover:text-red-400" : "hover:bg-red-50 text-zinc-400 hover:text-red-500"
+                          }`}
                         title="Delete"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -221,9 +216,8 @@ export function TeacherAssignmentsPanel() {
       {pickingClassroom && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setPickingClassroom(false)}>
           <div
-            className={`w-full max-w-sm rounded-2xl border p-6 shadow-xl ${
-              isDark ? "border-white/10 bg-zinc-900" : "border-black/10 bg-white"
-            }`}
+            className={`w-full max-w-sm rounded-2xl border p-6 shadow-xl ${isDark ? "border-white/10 bg-zinc-900" : "border-black/10 bg-white"
+              }`}
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-4 text-base font-semibold">Select a classroom</h3>
@@ -237,11 +231,10 @@ export function TeacherAssignmentsPanel() {
                   <button
                     key={c.id}
                     onClick={() => { setPickingClassroom(false); setCreateForClassroom(c.id); }}
-                    className={`w-full rounded-lg border px-4 py-3 text-left text-sm font-medium transition-colors ${
-                      isDark
+                    className={`w-full rounded-lg border px-4 py-3 text-left text-sm font-medium transition-colors ${isDark
                         ? "border-white/[0.06] hover:bg-white/[0.04]"
                         : "border-black/[0.06] hover:bg-zinc-50"
-                    }`}
+                      }`}
                   >
                     {c.name}
                   </button>
@@ -250,9 +243,8 @@ export function TeacherAssignmentsPanel() {
             )}
             <button
               onClick={() => setPickingClassroom(false)}
-              className={`mt-4 w-full rounded-lg px-4 py-2 text-sm transition-colors ${
-                isDark ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"
-              }`}
+              className={`mt-4 w-full rounded-lg px-4 py-2 text-sm transition-colors ${isDark ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"
+                }`}
             >
               Cancel
             </button>
