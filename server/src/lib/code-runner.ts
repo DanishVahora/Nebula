@@ -23,6 +23,11 @@ export interface TestResult {
   executionTime: number; // ms
 }
 
+export interface RunDSAOptions {
+  assignmentTitle?: string;
+  preferFunctionMode?: boolean;
+}
+
 const EXEC_TIMEOUT = 10_000; // 10 seconds per test case
 
 function makeTempDir(): string {
@@ -87,6 +92,289 @@ async function runCpp(code: string, input: string, tmpDir: string) {
   return execWithTimeout(outFile, [], tmpDir, input, EXEC_TIMEOUT);
 }
 
+type CppParam = { type: string; name: string };
+type CppFunctionSignature = { returnType: string; name: string; params: CppParam[] };
+
+function hasCppMain(code: string): boolean {
+  return /\bint\s+main\s*\(/.test(code);
+}
+
+function toCamelCaseTitle(title: string): string {
+  const words = String(title || "")
+    .replace(/[^a-zA-Z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) return "solve";
+  return words
+    .map((w, i) => (i === 0 ? w.toLowerCase() : `${w[0].toUpperCase()}${w.slice(1).toLowerCase()}`))
+    .join("");
+}
+
+function splitTopLevelCsv(value: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = "";
+
+  for (const ch of value) {
+    if (ch === "<") depth += 1;
+    if (ch === ">") depth = Math.max(0, depth - 1);
+
+    if (ch === "," && depth === 0) {
+      out.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current.trim()) out.push(current.trim());
+  return out;
+}
+
+function normalizeCppType(type: string): string {
+  return type
+    .replace(/\bconst\b/g, "")
+    .replace(/[&*]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s*<\s*/g, "<")
+    .replace(/\s*>\s*/g, ">")
+    .replace(/\s*,\s*/g, ",");
+}
+
+function parseCppSignature(code: string, assignmentTitle?: string): CppFunctionSignature | null {
+  const regex = /([A-Za-z_][\w:<>,\s&*]*?)\s+([A-Za-z_][\w]*)\s*\(([^)]*)\)\s*\{/g;
+  const candidates: CppFunctionSignature[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(code)) !== null) {
+    const returnType = normalizeCppType(match[1] || "");
+    const name = String(match[2] || "").trim();
+    const paramsRaw = String(match[3] || "").trim();
+
+    if (!returnType || !name) continue;
+    if (name === "main") continue;
+    if (["if", "for", "while", "switch", "catch"].includes(name)) continue;
+
+    const params = paramsRaw
+      ? splitTopLevelCsv(paramsRaw)
+        .map((entry) => {
+          const cleaned = entry.replace(/=[^,]+$/, "").trim();
+          const m = cleaned.match(/^(.*\S)\s+([A-Za-z_][\w]*)$/);
+          if (!m) return null;
+          return { type: normalizeCppType(m[1]), name: m[2] } as CppParam;
+        })
+        .filter((x): x is CppParam => !!x)
+      : [];
+
+    candidates.push({ returnType, name, params });
+  }
+
+  if (candidates.length === 0) return null;
+
+  const preferred = toCamelCaseTitle(assignmentTitle || "");
+  const preferredNorm = preferred.replace(/_/g, "").toLowerCase();
+  const exact = candidates.find((c) => c.name.replace(/_/g, "").toLowerCase() === preferredNorm);
+  return exact || candidates[0];
+}
+
+function jsonToCppLiteral(value: any, type: string): string | null {
+  const t = normalizeCppType(type);
+
+  if (t === "int" || t === "long" || t === "long long") {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    return Number.isInteger(value) ? String(value) : String(Math.trunc(value));
+  }
+
+  if (t === "double" || t === "float") {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    return String(value);
+  }
+
+  if (t === "bool") {
+    if (typeof value !== "boolean") return null;
+    return value ? "true" : "false";
+  }
+
+  if (t === "string" || t === "std::string") {
+    if (typeof value !== "string") return null;
+    return JSON.stringify(value);
+  }
+
+  if (t === "vector<int>" || t === "std::vector<int>") {
+    if (!Array.isArray(value) || value.some((x) => typeof x !== "number" || !Number.isFinite(x))) return null;
+    return `{${value.map((x) => String(Math.trunc(x))).join(",")}}`;
+  }
+
+  if (t === "vector<long long>" || t === "std::vector<long long>") {
+    if (!Array.isArray(value) || value.some((x) => typeof x !== "number" || !Number.isFinite(x))) return null;
+    return `{${value.map((x) => String(Math.trunc(x))).join(",")}}`;
+  }
+
+  if (t === "vector<string>" || t === "std::vector<string>") {
+    if (!Array.isArray(value) || value.some((x) => typeof x !== "string")) return null;
+    return `{${value.map((x) => JSON.stringify(x)).join(",")}}`;
+  }
+
+  return null;
+}
+
+function stableJson(value: any): string {
+  if (Array.isArray(value)) return `[${value.map((x) => stableJson(x)).join(",")}]`;
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableJson(value[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function normalizeExpectedValue(raw: string): string {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "";
+
+  try {
+    return stableJson(JSON.parse(trimmed));
+  } catch {
+    return trimmed;
+  }
+}
+
+function buildCppFunctionHarness(userCode: string, sig: CppFunctionSignature, argLiterals: string[]): string {
+  const vars = sig.params.map((p, i) => `  ${normalizeCppType(p.type)} __arg${i} = ${argLiterals[i]};`).join("\n");
+  const callArgs = sig.params.map((_, i) => `__arg${i}`).join(", ");
+
+  return `${userCode}
+
+static string __orbit_json_escape(const string& s) {
+  string out = "\"";
+  for (char c : s) {
+    switch (c) {
+      case '\\': out += "\\\\"; break;
+      case '"': out += "\\\""; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default: out += c; break;
+    }
+  }
+  out += "\"";
+  return out;
+}
+
+template <typename T>
+static string __orbit_to_json_value(const T& v) {
+  return to_string(v);
+}
+
+static string __orbit_to_json_value(const bool& v) {
+  return v ? "true" : "false";
+}
+
+static string __orbit_to_json_value(const string& v) {
+  return __orbit_json_escape(v);
+}
+
+template <typename T>
+static string __orbit_to_json_value(const vector<T>& v) {
+  string out = "[";
+  for (size_t i = 0; i < v.size(); ++i) {
+    if (i) out += ",";
+    out += __orbit_to_json_value(v[i]);
+  }
+  out += "]";
+  return out;
+}
+
+int main() {
+${vars}
+  auto __orbit_result = ${sig.name}(${callArgs});
+  cout << __orbit_to_json_value(__orbit_result);
+  return 0;
+}
+`;
+}
+
+function parseFunctionInputArgs(rawInput: string): { positional: any[] } | { invalid: string } {
+  const text = String(rawInput || "").trim();
+  if (!text) return { invalid: "Input must be JSON array for function mode" };
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return { positional: parsed };
+    if (parsed && typeof parsed === "object" && Array.isArray((parsed as any).args)) {
+      return { positional: (parsed as any).args };
+    }
+    return { invalid: "Input JSON must be an array of function arguments" };
+  } catch {
+    return { invalid: "Input must be valid JSON (array of function arguments)" };
+  }
+}
+
+async function runCppFunctionMode(
+  code: string,
+  testCase: TestCaseInput,
+  tmpDir: string,
+  assignmentTitle?: string
+) {
+  const sig = parseCppSignature(code, assignmentTitle);
+  if (!sig) {
+    return {
+      stdout: "",
+      stderr:
+        "Function mode could not find a valid C++ function signature. Define a function (not main) with supported types.",
+      exitCode: 1,
+      time: 0,
+      expectedOutput: normalizeExpectedValue(testCase.expectedOutput),
+    };
+  }
+
+  const parsed = parseFunctionInputArgs(testCase.input);
+  if ("invalid" in parsed) {
+    return {
+      stdout: "",
+      stderr: `Invalid testcase input for function mode: ${parsed.invalid}`,
+      exitCode: 1,
+      time: 0,
+      expectedOutput: normalizeExpectedValue(testCase.expectedOutput),
+    };
+  }
+
+  if (parsed.positional.length !== sig.params.length) {
+    return {
+      stdout: "",
+      stderr: `Argument count mismatch. Function ${sig.name} expects ${sig.params.length}, testcase provides ${parsed.positional.length}.`,
+      exitCode: 1,
+      time: 0,
+      expectedOutput: normalizeExpectedValue(testCase.expectedOutput),
+    };
+  }
+
+  const argLiterals: string[] = [];
+  for (let i = 0; i < sig.params.length; i += 1) {
+    const lit = jsonToCppLiteral(parsed.positional[i], sig.params[i].type);
+    if (lit == null) {
+      return {
+        stdout: "",
+        stderr: `Unsupported or mismatched argument type for parameter '${sig.params[i].name}' (${sig.params[i].type}).`,
+        exitCode: 1,
+        time: 0,
+        expectedOutput: normalizeExpectedValue(testCase.expectedOutput),
+      };
+    }
+    argLiterals.push(lit);
+  }
+
+  const wrapped = buildCppFunctionHarness(code, sig, argLiterals);
+  const run = await runCpp(wrapped, "", tmpDir);
+  return {
+    ...run,
+    stdout: normalizeExpectedValue(run.stdout),
+    expectedOutput: normalizeExpectedValue(testCase.expectedOutput),
+  };
+}
+
 async function runPython(code: string, input: string, tmpDir: string) {
   const srcFile = path.join(tmpDir, "main.py");
   await fs.writeFile(srcFile, code, "utf-8");
@@ -110,7 +398,8 @@ async function runJava(code: string, input: string, tmpDir: string) {
 export async function runDSATests(
   code: string,
   language: string,
-  testCases: TestCaseInput[]
+  testCases: TestCaseInput[],
+  options: RunDSAOptions = {}
 ): Promise<TestResult[]> {
   const results: TestResult[] = [];
   const tmpDir = makeTempDir();
@@ -123,20 +412,45 @@ export async function runDSATests(
       try {
         switch (language) {
           case "cpp":
-            result = await runCpp(code, tc.input, tmpDir);
+            if (options.preferFunctionMode && !hasCppMain(code)) {
+              result = await runCppFunctionMode(code, tc, tmpDir, options.assignmentTitle);
+            } else {
+              result = await runCpp(code, tc.input, tmpDir);
+              result = {
+                ...result,
+                stdout: result.stdout.trim(),
+                expectedOutput: tc.expectedOutput.trim(),
+              };
+            }
             break;
           case "python":
             result = await runPython(code, tc.input, tmpDir);
+            result = {
+              ...result,
+              stdout: result.stdout.trim(),
+              expectedOutput: tc.expectedOutput.trim(),
+            };
             break;
           case "java":
             result = await runJava(code, tc.input, tmpDir);
+            result = {
+              ...result,
+              stdout: result.stdout.trim(),
+              expectedOutput: tc.expectedOutput.trim(),
+            };
             break;
           default:
-            result = { stdout: "", stderr: `Unsupported language: ${language}`, exitCode: 1, time: 0 };
+            result = {
+              stdout: "",
+              stderr: `Unsupported language: ${language}`,
+              exitCode: 1,
+              time: 0,
+              expectedOutput: tc.expectedOutput.trim(),
+            };
         }
 
-        const actual = result.stdout.trim();
-        const expected = tc.expectedOutput.trim();
+        const actual = result.stdout;
+        const expected = result.expectedOutput ?? tc.expectedOutput.trim();
 
         results.push({
           testCaseId: tc.id,

@@ -15,27 +15,99 @@ interface Props {
   onRefresh: () => Promise<void>;
 }
 
-const DEFAULT_STARTERS: Record<"cpp" | "python" | "java", string> = {
-  cpp: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // Write your solution\n\n    return 0;\n}\n`,
-  python: `import sys\n\ndef solve():\n    # Write your solution\n    pass\n\nif __name__ == "__main__":\n    solve()\n`,
-  java: `import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    public static void main(String[] args) throws Exception {\n        // Write your solution\n    }\n}\n`,
-};
+function toCamelCaseTitle(title: string): string {
+  const words = String(title || "")
+    .replace(/[^a-zA-Z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
 
-function getStarterByLanguage(starterCode: unknown, language: "cpp" | "python" | "java") {
+  if (words.length === 0) return "solve";
+  return words
+    .map((w, i) => (i === 0 ? w.toLowerCase() : `${w[0].toUpperCase()}${w.slice(1).toLowerCase()}`))
+    .join("");
+}
+
+function toSnakeCaseTitle(title: string): string {
+  const words = String(title || "")
+    .replace(/[^a-zA-Z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+  return words.length ? words.join("_") : "solve";
+}
+
+function defaultStarter(language: "cpp" | "python" | "java", title: string): string {
+  const fnCamel = toCamelCaseTitle(title);
+  const fnSnake = toSnakeCaseTitle(title);
+
+  if (language === "cpp") {
+    return `#include <bits/stdc++.h>
+using namespace std;
+
+// Return type and parameter types can be adjusted for your problem.
+vector<int> ${fnCamel}(vector<int>& nums, int target) {
+    // Write your solution
+    return {};
+}
+
+function looksLikeLegacyMainStarter(code: string, language: "cpp" | "python" | "java"): boolean {
+  const normalized = String(code || "");
+  if (!normalized.trim()) return true;
+
+  if (language === "cpp") {
+    return /\bint\s+main\s*\(/.test(normalized) && !/\b[a-zA-Z_]\w*\s*\([^)]*\)\s*\{/.test(normalized.replace(/\bint\s+main\s*\([^)]*\)\s*\{/g, ""));
+  }
+
+  if (language === "python") {
+    return /def\s+solve\s*\(/.test(normalized);
+  }
+
+  return /public\s+static\s+void\s+main\s*\(/.test(normalized) && !/public\s+static\s+[A-Za-z0-9_<>,\[\]]+\s+[a-zA-Z_]\w*\s*\(/.test(normalized.replace(/public\s+static\s+void\s+main\s*\([^)]*\)\s*\{/g, ""));
+}
+`;
+  }
+
+  if (language === "python") {
+    return `# Return type and parameter types can be adjusted for your problem.
+def ${fnSnake}(nums, target):
+    # Write your solution
+    return []
+`;
+  }
+
+  return `import java.util.*;
+
+public class Main {
+    // Return type and parameter types can be adjusted for your problem.
+    public static List<Integer> ${fnCamel}(List<Integer> nums, int target) {
+        // Write your solution
+        return new ArrayList<>();
+    }
+}
+`;
+}
+
+function getStarterByLanguage(starterCode: unknown, language: "cpp" | "python" | "java", title: string) {
   if (starterCode && typeof starterCode === "object") {
     const map = starterCode as Record<string, string>;
-    if (typeof map[language] === "string") return map[language];
-    if (typeof map.default === "string") return map.default;
+    if (typeof map[language] === "string") {
+      if (looksLikeLegacyMainStarter(map[language], language)) return defaultStarter(language, title);
+      return map[language];
+    }
+    if (typeof map.default === "string") {
+      if (looksLikeLegacyMainStarter(map.default, language)) return defaultStarter(language, title);
+      return map.default;
+    }
   }
-  return DEFAULT_STARTERS[language];
+  return defaultStarter(language, title);
 }
 
 export function DSAPlayground({ assignment, mySubmission, onRefresh }: Props) {
   const [language, setLanguage] = useState<"cpp" | "python" | "java">("cpp");
   const [codeByLanguage, setCodeByLanguage] = useState<Record<"cpp" | "python" | "java", string>>(() => ({
-    cpp: getStarterByLanguage(assignment.starterCode, "cpp"),
-    python: getStarterByLanguage(assignment.starterCode, "python"),
-    java: getStarterByLanguage(assignment.starterCode, "java"),
+    cpp: getStarterByLanguage(assignment.starterCode, "cpp", assignment.title),
+    python: getStarterByLanguage(assignment.starterCode, "python", assignment.title),
+    java: getStarterByLanguage(assignment.starterCode, "java", assignment.title),
   }));
 
   const [customInput, setCustomInput] = useState("");
@@ -103,7 +175,7 @@ export function DSAPlayground({ assignment, mySubmission, onRefresh }: Props) {
   const handleReset = () => {
     setCodeByLanguage((prev) => ({
       ...prev,
-      [language]: getStarterByLanguage(assignment.starterCode, language),
+      [language]: getStarterByLanguage(assignment.starterCode, language, assignment.title),
     }));
     setRunResults([]);
     setError(null);
@@ -155,11 +227,11 @@ export function DSAPlayground({ assignment, mySubmission, onRefresh }: Props) {
           submissionSummary ||
           (mySubmission?.status === "SUBMITTED" && typeof mySubmission?.score === "number"
             ? {
-                passed: 0,
-                total: assignment.testCases?.length || 0,
-                score: mySubmission.score,
-                maxMarks: assignment.maxMarks,
-              }
+              passed: 0,
+              total: assignment.testCases?.length || 0,
+              score: mySubmission.score,
+              maxMarks: assignment.maxMarks,
+            }
             : null)
         }
       />

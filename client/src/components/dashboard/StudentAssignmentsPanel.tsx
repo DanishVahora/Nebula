@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { assignmentAPI } from "@/lib/api";
+import { assignmentAPI, userAPI } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { motion } from "framer-motion";
 import {
@@ -61,7 +61,7 @@ export function StudentAssignmentsPanel() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await assignmentAPI.getMyAll();
+        const { data } = await userAPI.getAssignments();
         setAssignments(data.assignments);
       } catch {
         // ignore
@@ -94,9 +94,8 @@ export function StudentAssignmentsPanel() {
 
   if (assignments.length === 0) {
     return (
-      <div className={`flex flex-col items-center justify-center rounded-2xl border py-16 ${
-        isDark ? "border-white/[0.06] bg-white/[0.02]" : "border-black/[0.06] bg-black/[0.02]"
-      }`}>
+      <div className={`flex flex-col items-center justify-center rounded-2xl border py-16 ${isDark ? "border-white/6 bg-white/2" : "border-black/6 bg-black/2"
+        }`}>
         <div className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl ${isDark ? "bg-white/5" : "bg-black/5"}`}>
           <ClipboardList className={`h-7 w-7 ${isDark ? "text-zinc-600" : "text-zinc-400"}`} />
         </div>
@@ -126,19 +125,17 @@ export function StudentAssignmentsPanel() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.04 }}
-            className={`group rounded-xl border p-5 transition-all ${
-              isDark
-                ? "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.12]"
-                : "border-black/[0.06] bg-black/[0.02] hover:border-black/[0.12]"
-            }`}
+            className={`group rounded-xl border p-5 transition-all ${isDark
+                ? "border-white/6 bg-white/2 hover:border-white/12"
+                : "border-black/6 bg-black/2 hover:border-black/12"
+              }`}
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3 min-w-0">
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                  a.type === "DSA"
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${a.type === "DSA"
                     ? isDark ? "bg-purple-500/10" : "bg-purple-50"
                     : isDark ? "bg-blue-500/10" : "bg-blue-50"
-                }`}>
+                  }`}>
                   {a.type === "DSA" ? (
                     <Code2 className={`h-5 w-5 ${isDark ? "text-purple-400" : "text-purple-600"}`} />
                   ) : (

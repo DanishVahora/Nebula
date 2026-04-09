@@ -39,6 +39,8 @@ const helmetMiddleware = helmet({
   contentSecurityPolicy: {
     directives: {
       ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      // OAuth providers return remote avatar URLs (Google/GitHub), so allow external images.
+      "img-src": ["'self'", "data:", "blob:", "https:", "http:"],
       "frame-ancestors": ["'self'", env.CLIENT_URL],
     },
   },

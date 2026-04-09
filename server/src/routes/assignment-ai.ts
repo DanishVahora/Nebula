@@ -46,12 +46,15 @@ function buildPrompt(topic: string, difficulty: Difficulty, language: Language) 
     "- constraints should be concise (multi-line string allowed).",
     "- examples must be an array of objects with keys: input, output, explanation.",
     "- starterCode must be an object with keys: cpp, python, java.",
+    "- starterCode must define a function (NOT main) named from title in camelCase (e.g., 'Two Sum' -> 'twoSum').",
+    "- Supported return types: int, long long, string, bool, vector<int>, vector<long long>, vector<string>.",
     "- testcases must be an array of at least 6 items.",
     "- Include both visible and hidden testcases.",
     "- Each testcase item must have keys: input, expectedOutput, isHidden, weight.",
     "- Ensure at least 2 hidden testcases.",
     "- weight must be positive integer.",
-    "- expectedOutput must exactly match output format for the input.",
+    "- testcase input must be JSON array of function arguments, for example: [[2,7,11,15],9]",
+    "- expectedOutput must be JSON value matching the function return value, for example: [0,1]",
     "",
     "Schema reference:",
     JSON.stringify(
@@ -61,13 +64,13 @@ function buildPrompt(topic: string, difficulty: Difficulty, language: Language) 
         constraints: "1 <= n <= 1e5\\n-1e9 <= arr[i] <= 1e9",
         examples: [{ input: "4\\n2 7 11 15\\n9", output: "0 1", explanation: "arr[0]+arr[1]=9" }],
         starterCode: {
-          cpp: "#include <bits/stdc++.h>\\nusing namespace std;\\nint main(){return 0;}",
-          python: "def solve():\\n    pass\\n\\nif __name__ == '__main__':\\n    solve()",
-          java: "public class Main { public static void main(String[] args) {} }",
+          cpp: "#include <bits/stdc++.h>\\nusing namespace std;\\n\\nvector<int> twoSum(vector<int>& nums, int target) {\\n    return {};\\n}",
+          python: "def two_sum(nums, target):\\n    return []",
+          java: "import java.util.*;\\n\\npublic class Main {\\n    public static List<Integer> twoSum(List<Integer> nums, int target) {\\n        return new ArrayList<>();\\n    }\\n}",
         },
         testcases: [
-          { input: "sample input", expectedOutput: "sample output", isHidden: false, weight: 1 },
-          { input: "hidden input", expectedOutput: "hidden output", isHidden: true, weight: 2 },
+          { input: "[[2,7,11,15],9]", expectedOutput: "[0,1]", isHidden: false, weight: 1 },
+          { input: "[[3,2,4],6]", expectedOutput: "[1,2]", isHidden: true, weight: 2 },
         ],
       },
       null,
@@ -95,12 +98,12 @@ function extractJsonBlock(text: string): string {
 function normalizeProblem(raw: any): GeneratedProblem {
   const examples = Array.isArray(raw?.examples)
     ? raw.examples
-        .filter((x: any) => x && typeof x === "object")
-        .map((x: any) => ({
-          input: String(x.input ?? "").trim(),
-          output: String(x.output ?? "").trim(),
-          explanation: String(x.explanation ?? "").trim(),
-        }))
+      .filter((x: any) => x && typeof x === "object")
+      .map((x: any) => ({
+        input: String(x.input ?? "").trim(),
+        output: String(x.output ?? "").trim(),
+        explanation: String(x.explanation ?? "").trim(),
+      }))
     : [];
 
   const starterCode: Record<Language, string> = {
@@ -111,13 +114,13 @@ function normalizeProblem(raw: any): GeneratedProblem {
 
   const testcases = Array.isArray(raw?.testcases)
     ? raw.testcases
-        .filter((x: any) => x && typeof x === "object")
-        .map((x: any) => ({
-          input: String(x.input ?? "").trim(),
-          expectedOutput: String(x.expectedOutput ?? "").trim(),
-          isHidden: Boolean(x.isHidden),
-          weight: Math.max(1, Number.isFinite(Number(x.weight)) ? Math.round(Number(x.weight)) : 1),
-        }))
+      .filter((x: any) => x && typeof x === "object")
+      .map((x: any) => ({
+        input: String(x.input ?? "").trim(),
+        expectedOutput: String(x.expectedOutput ?? "").trim(),
+        isHidden: Boolean(x.isHidden),
+        weight: Math.max(1, Number.isFinite(Number(x.weight)) ? Math.round(Number(x.weight)) : 1),
+      }))
     : [];
 
   const normalized: GeneratedProblem = {

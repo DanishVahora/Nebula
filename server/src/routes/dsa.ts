@@ -128,14 +128,14 @@ router.post("/run", authenticate, requireRole("STUDENT"), async (req: Request, r
     const additionalCases =
       typeof customInput === "string" && customInput.trim()
         ? [
-            {
-              id: "custom-input",
-              input: customInput,
-              expectedOutput: typeof customExpectedOutput === "string" ? customExpectedOutput : "",
-              weight: 0,
-              isHidden: false,
-            },
-          ]
+          {
+            id: "custom-input",
+            input: customInput,
+            expectedOutput: typeof customExpectedOutput === "string" ? customExpectedOutput : "",
+            weight: 0,
+            isHidden: false,
+          },
+        ]
         : [];
 
     const runCases = [...visibleTestCases, ...additionalCases];
@@ -145,7 +145,10 @@ router.post("/run", authenticate, requireRole("STUDENT"), async (req: Request, r
       return;
     }
 
-    const runResults = await runDSATests(String(code), String(language), runCases);
+    const runResults = await runDSATests(String(code), String(language), runCases, {
+      assignmentTitle: check.assignment.title,
+      preferFunctionMode: true,
+    });
 
     const results = runResults.map((result) => {
       const testCase = runCases.find((tc) => tc.id === result.testCaseId);
@@ -197,7 +200,10 @@ router.post("/submit", authenticate, requireRole("STUDENT"), async (req: Request
       return;
     }
 
-    const runResults = await runDSATests(String(code), String(language), assignment.testCases);
+    const runResults = await runDSATests(String(code), String(language), assignment.testCases, {
+      assignmentTitle: assignment.title,
+      preferFunctionMode: true,
+    });
     const score = calculateScore(assignment.testCases, runResults, assignment.maxMarks || 100);
 
     let submission = await prisma.submission.findFirst({
@@ -297,10 +303,10 @@ router.get("/submission/:id", authenticate, async (req: Request, res: Response) 
     const stored = parseStoredFeedback(submission.feedback);
     const outputResults = Array.isArray(stored.results)
       ? stored.results.map((item) => ({
-          ...item,
-          expectedOutput: !isTeacher && item.isHidden ? "" : item.expectedOutput,
-          input: !isTeacher && item.isHidden ? "" : item.input,
-        }))
+        ...item,
+        expectedOutput: !isTeacher && item.isHidden ? "" : item.expectedOutput,
+        input: !isTeacher && item.isHidden ? "" : item.input,
+      }))
       : [];
 
     res.json({

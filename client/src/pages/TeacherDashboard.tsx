@@ -76,12 +76,10 @@ function GradientBackground() {
 function EmptySection({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description: string }) {
   const { isDark } = useTheme();
   return (
-    <div className={`flex flex-col items-center justify-center rounded-2xl border py-16 ${
-      isDark ? "border-white/[0.06] bg-white/[0.02]" : "border-black/[0.06] bg-black/[0.02]"
-    }`}>
-      <div className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl ${
-        isDark ? "bg-white/5" : "bg-black/5"
+    <div className={`flex flex-col items-center justify-center rounded-2xl border py-16 ${isDark ? "border-white/[0.06] bg-white/[0.02]" : "border-black/[0.06] bg-black/[0.02]"
       }`}>
+      <div className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl ${isDark ? "bg-white/5" : "bg-black/5"
+        }`}>
         <Icon className={`h-7 w-7 ${isDark ? "text-zinc-600" : "text-zinc-400"}`} />
       </div>
       <h3 className="text-base font-semibold">{title}</h3>
@@ -133,7 +131,7 @@ export default function TeacherDashboard() {
                 <WelcomeSection />
                 <div className="grid gap-5 lg:grid-cols-2">
                   <WorkspacesCard />
-                  <AssignmentsCard />
+                  <AssignmentsCard onOpenAssignments={() => setActiveSection("assignments")} />
                 </div>
               </motion.div>
             )}

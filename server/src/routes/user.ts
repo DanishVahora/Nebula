@@ -15,6 +15,21 @@ const cookieOptions = {
 
 const router = Router();
 
+function mapStudentAssignmentStatus(
+  submission: { status: string } | null,
+  deadline: Date | null,
+): string {
+  if (!submission) {
+    return deadline && deadline < new Date() ? "overdue" : "pending";
+  }
+
+  if (submission.status === "GRADED") return "graded";
+  if (submission.status === "SUBMITTED") return "submitted";
+  if (submission.status === "TIMED_OUT") return "overdue";
+
+  return deadline && deadline < new Date() ? "overdue" : "pending";
+}
+
 // ── Get user workspaces ────────────────────────────────
 router.get(
   "/workspaces",
@@ -124,6 +139,59 @@ router.get(
   authenticate,
   async (req: Request, res: Response) => {
     try {
+      if (req.user!.role === "STUDENT") {
+        const memberships = await prisma.classroomMember.findMany({
+          where: { userId: req.user!.userId },
+          select: { classroomId: true },
+        });
+
+        const classroomIds = memberships.map((membership) => membership.classroomId);
+
+        if (classroomIds.length === 0) {
+          res.json({ assignments: [] });
+          return;
+        }
+
+        const assignments = await prisma.assignment.findMany({
+          where: { classroomId: { in: classroomIds } },
+          include: {
+            classroom: { select: { id: true, name: true } },
+            creator: { select: { id: true, name: true } },
+            _count: { select: { testCases: true, submissions: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+
+        const submissions = await prisma.submission.findMany({
+          where: {
+            userId: req.user!.userId,
+            assignmentId: { in: assignments.map((assignment) => assignment.id) },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+
+        const submissionMap = new Map<string, (typeof submissions)[number]>();
+        for (const submission of submissions) {
+          if (!submissionMap.has(submission.assignmentId)) {
+            submissionMap.set(submission.assignmentId, submission);
+          }
+        }
+
+        const payload = assignments.map((assignment) => {
+          const mySubmission = submissionMap.get(assignment.id) || null;
+
+          return {
+            ...assignment,
+            dueDate: assignment.deadline ? assignment.deadline.toISOString() : null,
+            status: mapStudentAssignmentStatus(mySubmission, assignment.deadline),
+            mySubmission,
+          };
+        });
+
+        res.json({ assignments: payload });
+        return;
+      }
+
       const assignments = await prisma.assignment.findMany({
         where: { createdBy: req.user!.userId },
         include: {
@@ -167,7 +235,7 @@ router.patch("/role", authenticate, async (req: Request, res: Response) => {
     // Prevent role switching if user has already established a role
     // Users can only set their role once during initial signup
     if (currentUser.role !== "STUDENT" && currentUser.role !== role) {
-      res.status(403).json({ 
+      res.status(403).json({
         error: `You are already registered as a ${currentUser.role}. Role cannot be changed.`,
         currentRole: currentUser.role
       });
@@ -184,9 +252,9 @@ router.patch("/role", authenticate, async (req: Request, res: Response) => {
       const hasClassroomMembership = await prisma.classroomMember.findFirst({
         where: { userId: req.user!.userId, role: "STUDENT" },
       });
-      
+
       if (hasStudentActivity || hasClassroomMembership) {
-        res.status(403).json({ 
+        res.status(403).json({
           error: "Cannot switch to TEACHER. You have student activity (submissions or classroom memberships).",
           currentRole: currentUser.role
         });
@@ -201,9 +269,9 @@ router.patch("/role", authenticate, async (req: Request, res: Response) => {
       const hasAssignments = await prisma.assignment.findFirst({
         where: { createdBy: req.user!.userId },
       });
-      
+
       if (hasClassrooms || hasAssignments) {
-        res.status(403).json({ 
+        res.status(403).json({
           error: "Cannot switch to STUDENT. You have teacher activity (classrooms or assignments created).",
           currentRole: currentUser.role
         });

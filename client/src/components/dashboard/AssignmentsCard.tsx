@@ -13,6 +13,10 @@ interface Assignment {
   createdAt: string;
 }
 
+interface AssignmentsCardProps {
+  onOpenAssignments?: () => void;
+}
+
 const statusStyles: Record<string, { icon: React.ReactNode; darkColor: string; lightColor: string; darkBg: string; lightBg: string; darkBorder: string; lightBorder: string; label: string }> = {
   pending: {
     icon: <Clock className="h-3 w-3" />,
@@ -66,7 +70,7 @@ const statusStyles: Record<string, { icon: React.ReactNode; darkColor: string; l
   },
 };
 
-export function AssignmentsCard() {
+export function AssignmentsCard({ onOpenAssignments }: AssignmentsCardProps) {
   const { isDark } = useTheme();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,11 +96,10 @@ export function AssignmentsCard() {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.15 }}
-      className={`group relative overflow-hidden rounded-2xl border p-6 backdrop-blur-sm transition-all duration-500 hover:shadow-[0_0_30px_rgba(234,179,8,0.08)] ${
-        isDark
-          ? "border-white/8 bg-white/[0.03] hover:border-yellow-500/15"
-          : "border-black/8 bg-white/70 hover:border-yellow-500/20"
-      }`}
+      className={`group relative overflow-hidden rounded-2xl border p-6 backdrop-blur-sm transition-all duration-500 hover:shadow-[0_0_30px_rgba(234,179,8,0.08)] ${isDark
+        ? "border-white/8 bg-white/[0.03] hover:border-yellow-500/15"
+        : "border-black/8 bg-white/70 hover:border-yellow-500/20"
+        }`}
     >
       {/* Corner glow */}
       <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-yellow-500/[0.04] blur-[40px] transition-all duration-700 group-hover:bg-yellow-500/[0.08]" />
@@ -113,16 +116,28 @@ export function AssignmentsCard() {
               <p className={`text-[11px] ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>{loading ? "..." : `${assignments.length} total`}</p>
             </div>
           </div>
-          {pendingCount > 0 && (
-            <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${
-              isDark
+          <div className="flex items-center gap-2">
+            {pendingCount > 0 && (
+              <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${isDark
                 ? "border-yellow-500/15 bg-yellow-500/10 text-yellow-400"
                 : "border-yellow-200 bg-yellow-50 text-yellow-600"
-            }`}>
-              <Clock className="h-2.5 w-2.5" />
-              {pendingCount} due
-            </span>
-          )}
+                }`}>
+                <Clock className="h-2.5 w-2.5" />
+                {pendingCount} due
+              </span>
+            )}
+            {onOpenAssignments && (
+              <button
+                onClick={onOpenAssignments}
+                className={`rounded-md border px-2.5 py-1 text-[10px] font-semibold transition-colors ${isDark
+                  ? "border-white/10 text-zinc-300 hover:bg-white/5"
+                  : "border-black/10 text-zinc-700 hover:bg-black/5"
+                  }`}
+              >
+                Open
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Bold stat */}
@@ -155,23 +170,22 @@ export function AssignmentsCard() {
         </p>
 
         {/* Assignment list */}
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 max-h-56 space-y-2 overflow-y-auto pr-1">
           {loading ? (
             <div className="flex items-center justify-center py-6">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-transparent border-t-yellow-500" />
             </div>
           ) : assignments.length === 0 ? (
             <div className="flex flex-col items-center py-6 text-center">
-              <div className={`flex h-11 w-11 items-center justify-center rounded-xl border border-dashed ${
-                isDark ? "border-yellow-500/15 bg-yellow-500/5" : "border-yellow-200 bg-yellow-50"
-              }`}>
+              <div className={`flex h-11 w-11 items-center justify-center rounded-xl border border-dashed ${isDark ? "border-yellow-500/15 bg-yellow-500/5" : "border-yellow-200 bg-yellow-50"
+                }`}>
                 <ClipboardList className={`h-4.5 w-4.5 ${isDark ? "text-yellow-600" : "text-yellow-500"}`} />
               </div>
               <p className={`mt-3 text-xs font-medium ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>No assignments yet</p>
               <p className={`mt-0.5 text-[10px] ${isDark ? "text-zinc-600" : "text-zinc-400"}`}>They'll appear here when assigned</p>
             </div>
           ) : (
-            assignments.slice(0, 3).map((a, i) => {
+            assignments.map((a, i) => {
               const config = statusStyles[a.status] || statusStyles.pending;
               return (
                 <motion.div
@@ -179,18 +193,17 @@ export function AssignmentsCard() {
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.25 + i * 0.06 }}
-                  className={`group/item flex items-center justify-between rounded-xl border px-3.5 py-3 transition-all duration-300 ${
-                    isDark
-                      ? "border-white/[0.04] bg-white/[0.02] hover:border-yellow-500/10 hover:bg-yellow-500/[0.03]"
-                      : "border-black/[0.04] bg-black/[0.01] hover:border-yellow-500/15 hover:bg-yellow-50/50"
-                  }`}
+                  onClick={onOpenAssignments}
+                  className={`group/item flex items-center justify-between rounded-xl border px-3.5 py-3 transition-all duration-300 ${isDark
+                    ? "border-white/[0.04] bg-white/[0.02] hover:border-yellow-500/10 hover:bg-yellow-500/[0.03]"
+                    : "border-black/[0.04] bg-black/[0.01] hover:border-yellow-500/15 hover:bg-yellow-50/50"
+                    } ${onOpenAssignments ? "cursor-pointer" : ""}`}
                 >
                   <div className="flex items-center gap-3 overflow-hidden">
-                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${
-                      isDark
-                        ? `${config.darkBorder} ${config.darkBg} ${config.darkColor}`
-                        : `${config.lightBorder} ${config.lightBg} ${config.lightColor}`
-                    }`}>
+                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${isDark
+                      ? `${config.darkBorder} ${config.darkBg} ${config.darkColor}`
+                      : `${config.lightBorder} ${config.lightBg} ${config.lightColor}`
+                      }`}>
                       {config.icon}
                     </div>
                     <div className="min-w-0">
@@ -200,11 +213,10 @@ export function AssignmentsCard() {
                       </p>
                     </div>
                   </div>
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${
-                    isDark
-                      ? `${config.darkBorder} ${config.darkBg} ${config.darkColor}`
-                      : `${config.lightBorder} ${config.lightBg} ${config.lightColor}`
-                  }`}>
+                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${isDark
+                    ? `${config.darkBorder} ${config.darkBg} ${config.darkColor}`
+                    : `${config.lightBorder} ${config.lightBg} ${config.lightColor}`
+                    }`}>
                     {config.label}
                   </span>
                 </motion.div>
@@ -213,11 +225,6 @@ export function AssignmentsCard() {
           )}
         </div>
 
-        {assignments.length > 3 && (
-          <p className="mt-3 text-center text-[10px] font-medium text-yellow-500/50 transition-colors hover:text-yellow-500">
-            +{assignments.length - 3} more assignments
-          </p>
-        )}
       </div>
     </motion.div>
   );

@@ -4,9 +4,15 @@ import { motion } from "framer-motion";
 import { ArrowRight, LogOut, LayoutDashboard } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useEffect, useState } from "react";
 
 export const Navbar = () => {
   const { isAuthenticated, user, logout, loading } = useAuth();
+  const [avatarFailed, setAvatarFailed] = useState(false);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [user?.avatar]);
 
   const getDashboardLink = () => {
     if (!user) return "/dashboard";
@@ -54,10 +60,11 @@ export const Navbar = () => {
                 <span className="hidden sm:inline">Dashboard</span>
               </Link>
               <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5">
-                {user.avatar ? (
+                {user.avatar && !avatarFailed ? (
                   <img
                     src={user.avatar}
                     alt={user.name || "User"}
+                    onError={() => setAvatarFailed(true)}
                     className="h-5 w-5 rounded-full"
                   />
                 ) : (
@@ -65,8 +72,8 @@ export const Navbar = () => {
                 )}
                 <span className="text-xs text-zinc-300">{user.name || user.email}</span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${user.role === "TEACHER"
-                    ? "bg-yellow-500/20 text-yellow-400"
-                    : "bg-green-500/20 text-green-400"
+                  ? "bg-yellow-500/20 text-yellow-400"
+                  : "bg-green-500/20 text-green-400"
                   }`}>
                   {user.role}
                 </span>
